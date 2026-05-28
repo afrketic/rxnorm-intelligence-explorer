@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RxNorm Intelligence Explorer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <p class="eyebrow">AI - Alex Intelligence</p>
+      <h1>RxNorm Intelligence Explorer</h1>
+      <p class="subtitle">
+        Visualizing how medication data becomes standardized, interoperable, and AI-ready.
+      </p>
+    </section>
+
+    <section class="search-card">
+      <div class="search-header">
+        <div>
+          <label for="drugInput">Search Medication</label>
+          <p>
+            Enter a medication to explore its RxCUI, RxNorm relationships, ATC classes,
+            NDC mappings, and claims-ready intelligence.
+          </p>
+        </div>
+        <span class="status-pill">Live RxNav API</span>
+      </div>
+
+      <div class="search-row">
+        <input id="drugInput" type="text" placeholder="Enter a drug name — example: atorvastatin, Ozempic, Humira" />
+        <button id="searchButton">Explore Drug Intelligence</button>
+      </div>
+
+      <div class="examples">
+        <button class="example-btn">atorvastatin</button>
+        <button class="example-btn">Ozempic</button>
+        <button class="example-btn">Humira</button>
+      </div>
+    </section>
+
+    <div id="statusMessage" class="status"></div>
+
+    <section id="results" class="results hidden">
+      <section class="top-grid">
+        <article class="card identity-card">
+          <div class="section-label">Medication Identity</div>
+          <h2 id="conceptName">—</h2>
+          <div class="identity-grid">
+            <div>
+              <span>Search Term</span>
+              <strong id="searchTerm">—</strong>
+            </div>
+            <div>
+              <span>Primary RxCUI</span>
+              <strong id="primaryRxcui">—</strong>
+            </div>
+            <div>
+              <span>Term Type</span>
+              <strong id="termType">—</strong>
+            </div>
+            <div>
+              <span>Source</span>
+              <strong>RxNorm / RxNav</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="section-label">Interoperability Summary</div>
+          <h2>Normalized Medication Intelligence</h2>
+          <div class="metric-grid">
+            <div class="metric">
+              <span id="relatedCount">0</span>
+              <small>Related Concepts</small>
+            </div>
+            <div class="metric">
+              <span id="atcCount">0</span>
+              <small>ATC Classes</small>
+            </div>
+            <div class="metric">
+              <span id="ndcCount">0</span>
+              <small>NDC Records</small>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <article class="card full pipeline-card">
+        <div class="card-heading">
+          <div>
+            <div class="section-label">Step 2E.1</div>
+            <h2>Visual Interoperability Pipeline</h2>
+            <p class="helper-text">
+              How one medication search becomes standardized, classified, mapped, and analytics-ready.
+            </p>
+          </div>
+          <span class="status-pill">Drug → RxCUI → ATC → NDC → Claims</span>
+        </div>
+
+        <div id="pipelineNodes" class="pipeline"></div>
+      </article>
+
+      <article class="card full atc-explorer-card">
+        <div class="card-heading">
+          <div>
+            <div class="section-label">Step 2E.2</div>
+            <h2>Interactive ATC Hierarchy Explorer</h2>
+            <p class="helper-text">
+              Explore how therapeutic class records organize medication intelligence into clinical hierarchy levels.
+            </p>
+          </div>
+          <span class="status-pill">Therapeutic intelligence layer</span>
+        </div>
+
+        <div class="atc-dashboard">
+          <aside class="atc-insight-panel">
+            <div class="insight-stat">
+              <span id="atcUniqueCount">0</span>
+              <small>Unique ATC Classes</small>
+            </div>
+            <div class="insight-stat">
+              <span id="atcPrimaryCode">—</span>
+              <small>Primary ATC Signal</small>
+            </div>
+            <div class="insight-copy">
+              <strong>Clinical Intelligence Readout</strong>
+              <p id="atcReadout">
+                Search a medication to generate therapeutic hierarchy intelligence.
+              </p>
+            </div>
+          </aside>
+
+          <section class="atc-tree-panel">
+            <div class="atc-toolbar">
+              <button id="expandAtcButton" class="secondary-btn">Expand All</button>
+              <button id="collapseAtcButton" class="secondary-btn">Collapse All</button>
+            </div>
+            <div id="atcTree" class="atc-tree"></div>
+          </section>
+        </div>
+      </article>
+
+      <article class="card full">
+        <div class="card-heading">
+          <div>
+            <div class="section-label">Graph-Ready Flow</div>
+            <h2>Medication Interoperability Flow</h2>
+          </div>
+          <span class="status-pill">Frontend-ready structure</span>
+        </div>
+        <div id="flowNodes" class="flow"></div>
+      </article>
+
+      <section class="split-grid">
+        <article class="card">
+          <div class="section-label">Therapeutic Class Records</div>
+          <h2>ATC Record Details</h2>
+          <p class="helper-text">
+            Raw ATC records returned from RxClass, displayed as structured intelligence records.
+          </p>
+          <div id="atcList" class="scroll-panel"></div>
+        </article>
+
+        <article class="card">
+          <div class="section-label">NDC Crosswalk Intelligence</div>
+          <h2>Claims-Ready Identifiers</h2>
+          <p class="helper-text">
+            NDC mappings connect standardized medication concepts to pharmacy claims,
+            package-level products, and downstream analytics workflows.
+          </p>
+          <div id="ndcList" class="scroll-panel"></div>
+        </article>
+      </section>
+
+      <article class="card full why-card">
+        <div class="section-label">Why This Matters</div>
+        <h2>From fragmented medication data to AI-ready healthcare intelligence</h2>
+        <p>
+          Standardized medication intelligence allows healthcare organizations to connect drug names, RxCUIs,
+          therapeutic classes, NDC identifiers, claims records, and analytics workflows into a unified view.
+          Without this normalization layer, medication data remains fragmented across EHRs, PBMs, claims systems,
+          formularies, and reporting platforms.
+        </p>
+        <div class="pillar-row">
+          <span>Healthcare Interoperability</span>
+          <span>Predictive Analytics & Machine Learning</span>
+          <span>Enterprise AI Strategy</span>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #050b18;
+  color: #f8fafc;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  color: #38bdf8;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+h1 {
+  font-size: 48px;
+  margin: 10px 0;
+}
+
+.subtitle {
+  color: #cbd5e1;
+  font-size: 18px;
+}
+
+.search-card,
+.card {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+}
+
+label {
+  display: block;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.search-row {
+  display: flex;
+  gap: 12px;
+}
+
+input {
+  flex: 1;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  background: #020617;
+  color: white;
+  font-size: 16px;
+}
+
+button {
+  border: none;
+  border-radius: 12px;
+  background: #2563eb;
+  color: white;
+  padding: 14px 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+.examples {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.example-btn {
+  background: #1e293b;
+  color: #93c5fd;
+}
+
+.status {
+  margin: 20px 0;
+  color: #93c5fd;
+}
+
+.results {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.hidden {
+  display: none;
+}
+
+.card h2 {
+  margin-top: 0;
+  color: #60a5fa;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.metric-grid div {
+  background: #020617;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 18px;
+  text-align: center;
+}
+
+.metric-grid span {
+  display: block;
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.metric-grid small {
+  color: #cbd5e1;
+}
+
+.flow {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.flow-node {
+  background: #020617;
+  border: 1px solid #334155;
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.list-item {
+  padding: 12px;
+  border-bottom: 1px solid #1e293b;
+  color: #cbd5e1;
+}
+
+@media (max-width: 800px) {
+  .search-row,
+  .results,
+  .flow {
+    grid-template-columns: 1fr;
+    display: block;
+  }
+
+  .search-row {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .card {
+    margin-bottom: 18px;
+  }
+
+  h1 {
+    font-size: 34px;
+  }
+}

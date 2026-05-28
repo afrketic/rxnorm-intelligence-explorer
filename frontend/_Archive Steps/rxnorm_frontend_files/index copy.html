@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RxNorm Intelligence Explorer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <p class="eyebrow">AI - Alex Intelligence</p>
+      <h1>RxNorm Intelligence Explorer</h1>
+      <p class="subtitle">
+        Visualizing how medication data becomes standardized, interoperable, and AI-ready.
+      </p>
+    </section>
+
+    <section class="search-card">
+      <label for="drugInput">Search Medication</label>
+      <div class="search-row">
+        <input id="drugInput" type="text" placeholder="Enter a drug name — example: atorvastatin, Ozempic, Humira" />
+        <button id="searchButton">Explore Drug Intelligence</button>
+      </div>
+
+      <div class="examples">
+        <button class="example-btn">atorvastatin</button>
+        <button class="example-btn">Ozempic</button>
+        <button class="example-btn">Humira</button>
+      </div>
+    </section>
+
+    <p id="statusMessage" class="status"></p>
+
+    <section id="results" class="results hidden">
+      <div class="card">
+        <h2>Medication Identity</h2>
+        <p><strong>Search Term:</strong> <span id="searchTerm"></span></p>
+        <p><strong>Primary RxCUI:</strong> <span id="primaryRxcui"></span></p>
+        <p><strong>Concept Name:</strong> <span id="conceptName"></span></p>
+        <p><strong>Term Type:</strong> <span id="termType"></span></p>
+      </div>
+
+      <div class="card">
+        <h2>Interoperability Summary</h2>
+        <div class="metric-grid">
+          <div><span id="relatedCount">0</span><small>Related Concepts</small></div>
+          <div><span id="atcCount">0</span><small>ATC Classes</small></div>
+          <div><span id="ndcCount">0</span><small>NDC Records</small></div>
+        </div>
+      </div>
+
+      <div class="card full">
+        <h2>Medication Interoperability Flow</h2>
+        <div id="flowNodes" class="flow"></div>
+      </div>
+
+      <div class="card full">
+        <h2>Therapeutic Class Explorer</h2>
+        <div id="atcList"></div>
+      </div>
+
+      <div class="card full">
+        <h2>NDC Crosswalk Sample</h2>
+        <div id="ndcList"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

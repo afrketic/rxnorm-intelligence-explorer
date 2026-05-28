@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RxNorm Intelligence Explorer</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <p class="eyebrow">AI - Alex Intelligence</p>
+      <h1>RxNorm Intelligence Explorer</h1>
+      <p class="subtitle">A medication interoperability workspace for RxNorm identity, ATC hierarchy, NDC claims mapping, and AI-ready analytics.</p>
+    </section>
+
+    <section class="search-card">
+      <div class="search-header">
+        <div>
+          <label for="drugInput">Search Medication</label>
+          <p>Explore standardized medication intelligence across RxCUI, RxNorm concepts, ATC classes, NDC identifiers, and claims-ready analytics.</p>
+        </div>
+        <span class="status-pill">Live RxNav API</span>
+      </div>
+
+      <div class="search-row">
+        <input id="drugInput" type="text" placeholder="Enter a drug name — example: atorvastatin, Ozempic, Humira" />
+        <button id="searchButton">Explore Drug Intelligence</button>
+      </div>
+
+      <div class="examples">
+        <button class="example-btn">atorvastatin</button>
+        <button class="example-btn">Ozempic</button>
+        <button class="example-btn">Humira</button>
+      </div>
+    </section>
+
+    <div id="statusMessage" class="status"></div>
+
+    <section id="results" class="results hidden">
+      <nav class="workspace-tabs">
+        <button class="tab-btn active" data-tab="overview">Overview</button>
+        <button class="tab-btn" data-tab="graph">Knowledge Graph</button>
+        <button class="tab-btn" data-tab="atc">ATC Hierarchy</button>
+        <button class="tab-btn" data-tab="ndc">NDC Intelligence</button>
+        <button class="tab-btn" data-tab="briefing">AI Intelligence Briefing</button>
+      </nav>
+
+      <section id="overview" class="tab-panel active">
+        <section class="top-grid">
+          <article class="card identity-card">
+            <div class="section-label">Medication Identity</div>
+            <h2 id="conceptName">—</h2>
+            <div class="identity-grid">
+              <div><span>Search Term</span><strong id="searchTerm">—</strong></div>
+              <div><span>Primary RxCUI</span><strong id="primaryRxcui">—</strong></div>
+              <div><span>Term Type</span><strong id="termType">—</strong></div>
+              <div><span>Source</span><strong>RxNorm / RxNav</strong></div>
+            </div>
+          </article>
+
+          <article class="card">
+            <div class="section-label">Interoperability Summary</div>
+            <h2>Normalized Medication Intelligence</h2>
+            <div class="metric-grid">
+              <div class="metric"><span id="relatedCount">0</span><small>Related Concepts</small></div>
+              <div class="metric"><span id="atcCount">0</span><small>ATC Classes</small></div>
+              <div class="metric"><span id="ndcCount">0</span><small>NDC Records</small></div>
+            </div>
+          </article>
+        </section>
+
+        <article class="card full pipeline-card">
+          <div class="card-heading">
+            <div>
+              <div class="section-label">Enterprise Interoperability Pipeline</div>
+              <h2>Drug Name → RxCUI → ATC → NDC → Claims Intelligence</h2>
+              <p class="helper-text">How one medication search becomes standardized, classified, mapped, and analytics-ready.</p>
+            </div>
+            <span class="status-pill">Platform View</span>
+          </div>
+          <div id="pipelineNodes" class="pipeline"></div>
+        </article>
+      </section>
+
+      <section id="graph" class="tab-panel">
+        <article class="card full graph-card">
+          <div class="card-heading">
+            <div>
+              <div class="section-label">Phase B — Enhanced Graph Controls</div>
+              <h2>Interactive Medication Knowledge Graph</h2>
+              <p class="helper-text">Filter semantic layers, inspect nodes, and switch graph modes to explore medication interoperability.</p>
+            </div>
+            <span class="status-pill">Live graph endpoint</span>
+          </div>
+
+          <div class="graph-control-grid">
+            <aside class="graph-controls">
+              <div class="control-title">Layer Filters</div>
+              <label><input type="checkbox" class="layer-toggle" value="drug" checked /> Drug</label>
+              <label><input type="checkbox" class="layer-toggle" value="rxcui" checked /> RxCUI</label>
+              <label><input type="checkbox" class="layer-toggle" value="rxnorm" checked /> RxNorm</label>
+              <label><input type="checkbox" class="layer-toggle" value="atc" checked /> ATC</label>
+              <label><input type="checkbox" class="layer-toggle" value="ndc" checked /> NDC</label>
+              <label><input type="checkbox" class="layer-toggle" value="analytics" checked /> Analytics</label>
+
+              <div class="control-title spacing">Graph Actions</div>
+              <button id="fitGraphButton" class="secondary-btn full-btn">Fit Graph</button>
+              <button id="showAllGraphButton" class="secondary-btn full-btn">Show All Layers</button>
+              <button id="focusAtcButton" class="secondary-btn full-btn">Focus ATC</button>
+              <button id="focusNdcButton" class="secondary-btn full-btn">Focus NDC</button>
+            </aside>
+
+            <section class="graph-shell">
+              <div id="networkGraph"></div>
+            </section>
+
+            <aside class="node-inspector">
+              <div class="control-title">Node Inspector</div>
+              <div id="nodeInspectorContent">
+                <p class="muted">Click a graph node to inspect its semantic layer and interoperability meaning.</p>
+              </div>
+
+              <div class="control-title spacing">Graph Metrics</div>
+              <div class="mini-metrics">
+                <div><span id="graphNodeCount">0</span><small>Nodes</small></div>
+                <div><span id="graphEdgeCount">0</span><small>Edges</small></div>
+                <div><span id="graphLayerCount">0</span><small>Layers</small></div>
+                <div><span id="graphDepthScore">0</span><small>Depth Score</small></div>
+              </div>
+            </aside>
+          </div>
+        </article>
+      </section>
+
+      <section id="atc" class="tab-panel">
+        <article class="card full atc-explorer-card">
+          <div class="card-heading">
+            <div>
+              <div class="section-label">Interactive ATC Hierarchy Explorer</div>
+              <h2>Therapeutic Class Intelligence</h2>
+              <p class="helper-text">Explore how therapeutic class records organize medication intelligence into clinical hierarchy levels.</p>
+            </div>
+            <span class="status-pill">Therapeutic layer</span>
+          </div>
+
+          <div class="atc-dashboard">
+            <aside class="atc-insight-panel">
+              <div class="insight-stat"><span id="atcUniqueCount">0</span><small>Unique ATC Classes</small></div>
+              <div class="insight-stat"><span id="atcPrimaryCode">—</span><small>Primary ATC Signal</small></div>
+              <div class="insight-copy"><strong>Clinical Intelligence Readout</strong><p id="atcReadout">Search a medication to generate therapeutic hierarchy intelligence.</p></div>
+            </aside>
+
+            <section class="atc-tree-panel">
+              <div class="atc-toolbar">
+                <button id="expandAtcButton" class="secondary-btn">Expand All</button>
+                <button id="collapseAtcButton" class="secondary-btn">Collapse All</button>
+              </div>
+              <div id="atcTree" class="atc-tree"></div>
+            </section>
+          </div>
+        </article>
+
+        <article class="card full">
+          <div class="section-label">Therapeutic Class Records</div>
+          <h2>ATC Record Details</h2>
+          <div id="atcList" class="scroll-panel"></div>
+        </article>
+      </section>
+
+      <section id="ndc" class="tab-panel">
+        <article class="card full">
+          <div class="card-heading">
+            <div>
+              <div class="section-label">NDC Crosswalk Intelligence</div>
+              <h2>Claims-Ready Medication Identifiers</h2>
+              <p class="helper-text">NDC mappings connect standardized medication concepts to pharmacy claims, package-level products, and downstream analytics workflows.</p>
+            </div>
+            <span class="status-pill">NDC9 / NDC10 / NDC11</span>
+          </div>
+          <div id="ndcList" class="scroll-panel tall"></div>
+        </article>
+      </section>
+
+      <section id="briefing" class="tab-panel">
+        <article class="card full why-card">
+          <div class="section-label">Phase C — AI Intelligence Layer</div>
+          <h2 id="briefingTitle">Medication Intelligence Summary</h2>
+          <div class="briefing-grid">
+            <div><strong>Executive Summary</strong><p id="executiveSummary">Search a medication to generate an executive-style interoperability briefing.</p></div>
+            <div><strong>Interoperability Narrative</strong><p id="interopNarrative">—</p></div>
+            <div><strong>Clinical Intelligence Commentary</strong><p id="clinicalCommentary">—</p></div>
+            <div><strong>Analytics Implications</strong><p id="analyticsImplications">—</p></div>
+          </div>
+
+          <div class="score-panel">
+            <div><span id="aiReadinessScore">0</span><small>AI Readiness Score</small></div>
+            <div><span id="semanticRichnessScore">0</span><small>Semantic Richness</small></div>
+            <div><span id="claimsReadinessScore">0</span><small>Claims Readiness</small></div>
+          </div>
+
+          <div class="pillar-row">
+            <span>Healthcare Interoperability</span>
+            <span>Predictive Analytics & Machine Learning</span>
+            <span>Enterprise AI Strategy</span>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
