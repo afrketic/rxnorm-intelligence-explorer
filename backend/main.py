@@ -167,6 +167,51 @@ def _radial_child_positions(cx, cy, radius, outward_deg, count, span_deg=120):
     return coords
 
 
+def _normalize_graph_payload(nodes, edges):
+    """
+    Final graph-wide formatting pass.
+
+    This applies the Advil/Ozempic/Wegovy visual rules globally so every
+    medication search inherits the same graph behavior:
+    - fixed concentric/ring layout is preserved,
+    - detail/outer-ring node labels stay hidden by default,
+    - tooltip text is normalized into real line breaks,
+    - relationship data remains available on hover,
+    - edge labels remain hidden by default.
+    """
+    normalized_nodes = []
+
+    for node in nodes:
+        clean_node = dict(node)
+        clean_node["title"] = _format_tooltip(clean_node.get("title", ""))
+
+        if clean_node.get("layout_role") == "detail":
+            visible_label = _format_tooltip(clean_node.get("hover_label") or clean_node.get("label") or clean_node.get("title"))
+            clean_node["hover_label"] = visible_label
+            clean_node["label"] = ""
+            if not clean_node.get("title"):
+                clean_node["title"] = visible_label
+
+        normalized_nodes.append(clean_node)
+
+    normalized_edges = []
+
+    for edge in edges:
+        clean_edge = dict(edge)
+        relationship = _format_tooltip(
+            clean_edge.get("relationship_type")
+            or clean_edge.get("label")
+            or "Relationship"
+        )
+        clean_edge["relationship_type"] = relationship
+        clean_edge["title"] = _format_tooltip(clean_edge.get("title") or "Relationship Type:", relationship)
+        clean_edge["label"] = _format_tooltip(clean_edge.get("label", ""))
+        clean_edge["show_label"] = False
+        normalized_edges.append(clean_edge)
+
+    return normalized_nodes, normalized_edges
+
+
 @app.get("/graph/{drug_name}")
 def get_drug_graph(drug_name: str):
     payload = get_full_application_payload(drug_name)
@@ -295,6 +340,8 @@ def get_drug_graph(drug_name: str):
         node_id = f"analytics_detail_{i}"
         nodes.append(_detail_node(node_id, label, "analytics", title, x, y, 17))
         edges.append(_edge("analytics_hub", node_id, "enables", "Enables"))
+
+    nodes, edges = _normalize_graph_payload(nodes, edges)
 
     return {
         "drug_name": drug_name,
