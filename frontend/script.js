@@ -7,191 +7,177 @@ const results = document.getElementById("results");
 const suggestionBox = document.getElementById("suggestionBox");
 
 let activeNetwork = null;
+let activeNodes = null;
+let activeEdges = null;
 let fullGraphData = { nodes: [], edges: [] };
-let atcHierarchyExpanded = false;
+let currentPayload = null;
+let currentScoreBreakdowns = {};
+let activeIntelligenceView = null;
 let suggestionTimer = null;
-let currentScores = null;
+let suggestionAbortController = null;
 
-const SCORE_DEFINITIONS = {
+const GROUP_STYLES = {
+  searched_drug: { background: "#2563eb", border: "#bfdbfe", font: "#f8fafc", size: 38 },
+  drug: { background: "#60a5fa", border: "#dbeafe", font: "#07111f", size: 30 },
+  rxcui: { background: "#38bdf8", border: "#e0f2fe", font: "#07111f", size: 30 },
+  rxnorm: { background: "#8b5cf6", border: "#ede9fe", font: "#f8fafc", size: 30 },
+  atc: { background: "#fb923c", border: "#fed7aa", font: "#07111f", size: 30 },
+  ndc: { background: "#22c55e", border: "#bbf7d0", font: "#07111f", size: 30 },
+  analytics: { background: "#facc15", border: "#fef08a", font: "#07111f", size: 30 }
+};
+
+const VIEW_CONFIG = {
+  interoperability: {
+    title: "Interoperability Summary",
+    focusGroups: ["rxnorm", "rxcui", "atc", "ndc"],
+    dimGroups: ["analytics"],
+    description: "Shows how well this medication is connected across healthcare data standards. This view emphasizes RxNorm, RxCUI, ATC, and NDC terminology relationships while de-emphasizing analytics so the interoperability pathway is easier to understand."
+  },
+  clinical: {
+    title: "Clinical Intelligence Summary",
+    focusGroups: ["drug", "rxnorm", "atc", "rxcui"],
+    dimGroups: ["ndc", "analytics"],
+    description: "Shows what this medication is clinically. This view emphasizes ingredients, clinical drugs, branded drugs, dose forms, RxNorm relationships, and therapeutic ATC classification."
+  },
+  claims: {
+    title: "Claims Intelligence Summary",
+    focusGroups: ["ndc", "rxcui", "drug"],
+    dimGroups: ["rxnorm", "atc", "analytics"],
+    description: "Shows how this medication appears in real-world pharmacy claims data. This view emphasizes NDC package identifiers, claims-level mappings, and the RxCUI anchor that connects standardized concepts to billing workflows."
+  },
   aiReadiness: {
-    title: "AI Readiness Score",
-    description: "Measures how effectively a medication concept can support AI, analytics, and interoperability workflows. The score considers RxNorm normalization, semantic relationships, therapeutic classification depth, and NDC connectivity. Higher scores indicate stronger readiness for machine learning and enterprise data integration.",
-    rows: [
-      ["RxNorm Coverage", "25 / 25"],
-      ["ATC Coverage", "20 / 20"],
-      ["NDC Connectivity", "25 / 25"],
-      ["Relationship Density", "24 / 30"]
-    ]
-  },
-  semanticRichness: {
-    title: "Semantic Richness",
-    description: "Quantifies the amount of semantic information available for a medication concept. The score evaluates the breadth of RxNorm concepts, ATC classifications, therapeutic relationships, and linked knowledge graph entities. Richer semantic networks improve explainability and downstream analytics.",
-    rows: [
-      ["RxNorm Concepts", "Weighted"],
-      ["ATC Classes", "Weighted"],
-      ["Relationship Types", "Weighted"],
-      ["Knowledge Graph Entities", "Weighted"]
-    ]
-  },
-  claimsReadiness: {
-    title: "Claims Readiness",
-    description: "Measures how completely a medication can be connected to pharmacy claims data through NDC mappings. The score reflects the strength and coverage of claim-level identifiers used in reimbursement, utilization analysis, and predictive healthcare analytics workflows.",
-    rows: [
-      ["NDC11 Coverage", "Primary"],
-      ["NDC10 Coverage", "Supporting"],
-      ["NDC9 Coverage", "Supporting"],
-      ["Claims Mapping", "Enabled"]
-    ]
+    title: "AI Readiness Summary",
+    focusGroups: ["rxnorm", "atc", "ndc", "analytics"],
+    dimGroups: ["drug"],
+    description: "Shows whether this medication has enough standardized, connected, and claims-ready information to support analytics, machine learning, and AI-driven healthcare intelligence."
   }
 };
 
-document.addEventListener("DOMContentLoaded", () => {
-  setupEventListeners();
-  setupScoreDefinitions();
+button.addEventListener("click", () => fetchDrugIntelligence(input.value));
+input.addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    hideSuggestions();
+    fetchDrugIntelligence(input.value);
+  }
+  if (event.key === "Escape") hideSuggestions();
+});
+input.addEventListener("input", handleSuggestionInput);
+document.addEventListener("click", event => {
+  if (!event.target.closest(".autocomplete-wrap")) hideSuggestions();
 });
 
-function setupEventListeners() {
-  button.addEventListener("click", () => fetchDrugIntelligence(input.value));
+document.querySelectorAll(".example-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    input.value = btn.textContent;
+    hideSuggestions();
+    fetchDrugIntelligence(btn.textContent);
+  });
+});
 
-  input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      hideSuggestions();
-      fetchDrugIntelligence(input.value);
-    }
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(panel => panel.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "graph" && activeNetwork) setTimeout(() => activeNetwork.fit(), 120);
   });
+});
 
-  input.addEventListener("input", handleAutocompleteInput);
-  document.addEventListener("click", (event) => {
-    if (suggestionBox && !event.target.closest(".autocomplete-wrap")) hideSuggestions();
-  });
+document.querySelectorAll(".layer-toggle").forEach(cb => cb.addEventListener("change", applyGraphFilters));
 
-  document.querySelectorAll(".example-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      input.value = btn.textContent;
-      hideSuggestions();
-      fetchDrugIntelligence(btn.textContent);
-    });
+document.querySelectorAll(".intelligence-view-btn").forEach(btn => {
+  const viewKey = btn.dataset.view;
+  const icon = btn.querySelector(".view-info-icon");
+  if (icon) icon.dataset.tooltip = VIEW_CONFIG[viewKey]?.description || "";
+  btn.addEventListener("click", event => {
+    if (event.target.classList.contains("info-icon")) return;
+    setIntelligenceView(activeIntelligenceView === viewKey ? null : viewKey);
   });
+});
 
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      document.getElementById(btn.dataset.tab).classList.add("active");
-      if (btn.dataset.tab === "graph" && activeNetwork) setTimeout(() => activeNetwork.fit(), 120);
-    });
-  });
+document.getElementById("expandAtcButton")?.addEventListener("click", () => {
+  document.querySelectorAll(".atc-group").forEach(group => group.classList.add("open"));
+  document.querySelectorAll(".atc-toggle").forEach(toggle => toggle.textContent = "−");
+});
+document.getElementById("collapseAtcButton")?.addEventListener("click", () => {
+  document.querySelectorAll(".atc-group").forEach(group => group.classList.remove("open"));
+  document.querySelectorAll(".atc-toggle").forEach(toggle => toggle.textContent = "+");
+});
 
-  document.querySelectorAll(".layer-toggle").forEach((cb) => cb.addEventListener("change", applyGraphFilters));
-  document.getElementById("fitGraphButton")?.addEventListener("click", () => activeNetwork && activeNetwork.fit());
-  document.getElementById("showAllGraphButton")?.addEventListener("click", () => {
-    document.querySelectorAll(".layer-toggle").forEach((cb) => (cb.checked = true));
-    applyGraphFilters();
+function setIntelligenceView(viewKey) {
+  activeIntelligenceView = viewKey;
+  document.querySelectorAll(".intelligence-view-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.view === activeIntelligenceView);
   });
-  document.getElementById("focusAtcButton")?.addEventListener("click", () => focusLayers(["drug", "rxcui", "rxnorm", "atc", "analytics"]));
-  document.getElementById("focusNdcButton")?.addEventListener("click", () => focusLayers(["drug", "rxcui", "rxnorm", "ndc", "analytics"]));
-
-  document.getElementById("expandAtcButton")?.addEventListener("click", () => {
-    document.querySelectorAll(".atc-group").forEach((g) => g.classList.add("open"));
-    document.querySelectorAll(".atc-toggle").forEach((t) => (t.textContent = "−"));
-  });
-  document.getElementById("collapseAtcButton")?.addEventListener("click", () => {
-    document.querySelectorAll(".atc-group").forEach((g) => g.classList.remove("open"));
-    document.querySelectorAll(".atc-toggle").forEach((t) => (t.textContent = "+"));
-  });
-
-  document.querySelectorAll(".score-card").forEach((card) => {
-    card.addEventListener("click", () => openScoreModal(card.dataset.scoreKey));
-  });
-  document.getElementById("scoreModalClose")?.addEventListener("click", closeScoreModal);
-  document.getElementById("scoreModal")?.addEventListener("click", (event) => {
-    if (event.target.id === "scoreModal") closeScoreModal();
-  });
-}
-
-function setupScoreDefinitions() {
-  document.querySelectorAll(".score-card").forEach((card) => {
-    const icon = card.querySelector(".info-icon");
-    const definition = SCORE_DEFINITIONS[card.dataset.scoreKey];
-    if (icon && definition) icon.dataset.tooltip = definition.description;
-  });
-}
-
-function focusLayers(layers) {
-  document.querySelectorAll(".layer-toggle").forEach((cb) => (cb.checked = layers.includes(cb.value)));
   applyGraphFilters();
+  if (activeIntelligenceView) renderIntelligenceViewPanel(activeIntelligenceView);
 }
 
-async function handleAutocompleteInput() {
-  if (!suggestionBox) return;
+async function handleSuggestionInput() {
   const query = input.value.trim();
-  clearTimeout(suggestionTimer);
+  if (suggestionTimer) clearTimeout(suggestionTimer);
+  if (suggestionAbortController) suggestionAbortController.abort();
   if (query.length < 2) {
     hideSuggestions();
     return;
   }
   suggestionTimer = setTimeout(async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/suggest/${encodeURIComponent(query)}?max_results=8`);
-      if (!response.ok) throw new Error("Suggestion API unavailable");
+      suggestionAbortController = new AbortController();
+      const response = await fetch(`${API_BASE_URL}/suggest/${encodeURIComponent(query)}?max_results=8`, { signal: suggestionAbortController.signal });
+      if (!response.ok) throw new Error(`Suggestion API error: ${response.status}`);
       const data = await response.json();
-      const suggestions = normalizeSuggestions(data);
-      renderSuggestions(suggestions);
+      renderSuggestions(data.suggestions || [], query);
     } catch (error) {
-      console.warn(error);
-      hideSuggestions();
+      if (error.name !== "AbortError") hideSuggestions();
     }
   }, 300);
 }
 
-function normalizeSuggestions(data) {
-  const raw = data?.suggestions || data?.suggestionList || data?.results || [];
-  return raw
-    .map((item) => (typeof item === "string" ? item : item.name || item.term || item.value || ""))
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-function renderSuggestions(suggestions) {
+function renderSuggestions(suggestions, query) {
   if (!suggestionBox) return;
-  suggestionBox.innerHTML = "";
+  if (input.value.trim() !== query) return;
   if (!suggestions.length) {
-    suggestionBox.innerHTML = '<div class="suggestion-empty">No suggestions found.</div>';
+    suggestionBox.innerHTML = '<div class="suggestion-empty">No suggestions found yet. Try another spelling or keep typing.</div>';
     suggestionBox.classList.remove("hidden");
     return;
   }
-  suggestions.forEach((suggestion) => {
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = "suggestion-item";
-    item.textContent = suggestion;
-    item.addEventListener("click", () => {
-      input.value = suggestion;
-      hideSuggestions();
-      fetchDrugIntelligence(suggestion);
-    });
-    suggestionBox.appendChild(item);
-  });
+  suggestionBox.innerHTML = suggestions
+    .map(value => `<button type="button" class="suggestion-item" role="option" data-value="${escapeHtml(value)}">${escapeHtml(value)}</button>`)
+    .join("");
   suggestionBox.classList.remove("hidden");
+  suggestionBox.querySelectorAll(".suggestion-item").forEach(item => {
+    item.addEventListener("click", () => {
+      const value = item.dataset.value || item.textContent;
+      input.value = value;
+      hideSuggestions();
+      fetchDrugIntelligence(value);
+    });
+  });
 }
 
 function hideSuggestions() {
-  if (!suggestionBox) return;
-  suggestionBox.classList.add("hidden");
-  suggestionBox.innerHTML = "";
+  if (suggestionTimer) clearTimeout(suggestionTimer);
+  if (suggestionAbortController) suggestionAbortController.abort();
+  if (suggestionBox) {
+    suggestionBox.classList.add("hidden");
+    suggestionBox.innerHTML = "";
+  }
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
 }
 
 async function fetchDrugIntelligence(drugName) {
+  hideSuggestions();
   const cleanDrugName = String(drugName || "").trim();
   if (!cleanDrugName) {
     statusMessage.textContent = "Please enter a medication name.";
     return;
   }
-
   setLoading(true);
-  atcHierarchyExpanded = false;
-
   try {
     const [payloadResponse, graphResponse] = await Promise.all([
       fetch(`${API_BASE_URL}/drug/${encodeURIComponent(cleanDrugName)}`),
@@ -199,29 +185,28 @@ async function fetchDrugIntelligence(drugName) {
     ]);
     if (!payloadResponse.ok) throw new Error(`Payload API error: ${payloadResponse.status}`);
     if (!graphResponse.ok) throw new Error(`Graph API error: ${graphResponse.status}`);
-
     const data = await payloadResponse.json();
     const graphData = await graphResponse.json();
+    currentPayload = data;
     fullGraphData = graphData;
+    activeIntelligenceView = null;
+    document.querySelectorAll(".intelligence-view-btn").forEach(btn => btn.classList.remove("active"));
     renderResults(data, graphData);
     statusMessage.textContent = "Medication intelligence loaded successfully.";
   } catch (error) {
     console.error(error);
-    statusMessage.textContent = "Unable to retrieve medication intelligence. Confirm the API is running and reachable.";
+    statusMessage.textContent = "Unable to retrieve medication intelligence. Confirm FastAPI is running on Render or locally.";
   } finally {
     setLoading(false);
   }
 }
 
 function setLoading(isLoading) {
+  button.disabled = isLoading;
+  button.textContent = isLoading ? "Loading..." : "Explore Drug Intelligence";
   if (isLoading) {
-    button.disabled = true;
-    button.textContent = "Loading...";
     statusMessage.textContent = "Loading medication intelligence...";
     results.classList.add("hidden");
-  } else {
-    button.disabled = false;
-    button.textContent = "Explore Drug Intelligence";
   }
 }
 
@@ -235,6 +220,7 @@ function renderResults(data, graphData) {
   renderTherapeuticClasses(data);
   renderNdcCrosswalk(data);
   renderBriefing(data);
+  renderMedicationSummaryPanel(data);
 }
 
 function renderIdentityCard(data) {
@@ -252,23 +238,87 @@ function renderSummaryMetrics(data) {
 
 function getSelectedLayers() {
   return Array.from(document.querySelectorAll(".layer-toggle"))
-    .filter((cb) => cb.checked)
-    .map((cb) => cb.value);
+    .filter(cb => cb.checked)
+    .map(cb => cb.value);
 }
 
 function applyGraphFilters() {
   const selected = getSelectedLayers();
-  const sourceNodes = fullGraphData.nodes || [];
-  const sourceEdges = fullGraphData.edges || [];
-  const visibleNodes = sourceNodes.filter((node) => node.group === "searched_drug" || selected.includes(node.group));
-  const allowed = new Set(visibleNodes.map((node) => node.id));
-  const visibleEdges = sourceEdges.filter((edge) => allowed.has(edge.from) && allowed.has(edge.to));
-  renderKnowledgeGraph({ ...fullGraphData, nodes: visibleNodes, edges: visibleEdges });
+  const nodes = (fullGraphData.nodes || []).filter(node => node.group === "searched_drug" || selected.includes(node.group));
+  const allowed = new Set(nodes.map(node => node.id));
+  const edges = (fullGraphData.edges || []).filter(edge => allowed.has(edge.from) && allowed.has(edge.to));
+  renderKnowledgeGraph({ nodes, edges });
 }
 
-function applyAtcExpansionState(nodes, edges) {
-  // ATC hierarchy is now shown inside ATC detail node metadata instead of separate expansion nodes.
-  return { nodes: nodes || [], edges: edges || [] };
+function rgbaFromHex(hex, opacity) {
+  const clean = hex.replace("#", "");
+  const bigint = parseInt(clean, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r},${g},${b},${opacity})`;
+}
+
+function getNodeStyle(node) {
+  const group = node.group || "drug";
+  const base = GROUP_STYLES[group] || GROUP_STYLES.drug;
+  const isCenter = node.group === "searched_drug" || node.id === "drug_center";
+  let opacity = 1;
+  if (activeIntelligenceView && !isCenter) {
+    const view = VIEW_CONFIG[activeIntelligenceView];
+    opacity = view?.focusGroups?.includes(group) ? 1 : 0.25;
+  }
+  const size = node.size || base.size || 24;
+  return {
+    ...node,
+    size,
+    originalSize: size,
+    color: {
+      background: rgbaFromHex(base.background, opacity),
+      border: rgbaFromHex(base.border, opacity),
+      highlight: { background: base.background, border: base.border },
+      hover: { background: base.background, border: base.border }
+    },
+    font: {
+      color: opacity < 0.5 ? "rgba(203,213,225,.42)" : base.font,
+      size: isCenter ? 14 : (node.layout_role === "hub" ? 13 : 12),
+      face: "Arial",
+      bold: true,
+      vadjust: 0,
+      strokeWidth: isCenter ? 4 : 2,
+      strokeColor: "rgba(2,6,23,.55)"
+    },
+    fixed: node.fixed || { x: true, y: true },
+    physics: false
+  };
+}
+
+function getEdgeStyle(edge, visibleNodes) {
+  const fromNode = visibleNodes.get(edge.from);
+  const toNode = visibleNodes.get(edge.to);
+  const fromGroup = fromNode?.group;
+  const toGroup = toNode?.group;
+  let opacity = 0.68;
+  if (activeIntelligenceView) {
+    const focus = VIEW_CONFIG[activeIntelligenceView]?.focusGroups || [];
+    const centerEdge = fromGroup === "searched_drug" || toGroup === "searched_drug";
+    const focusedEdge = focus.includes(fromGroup) || focus.includes(toGroup);
+    opacity = centerEdge || focusedEdge ? 0.78 : 0.18;
+  }
+  return {
+    ...edge,
+    label: edge.show_label ? edge.label : "",
+    arrows: { to: { enabled: true, scaleFactor: 0.9 } },
+    color: {
+      color: `rgba(203,213,225,${opacity})`,
+      highlight: "#38bdf8",
+      hover: "#38bdf8"
+    },
+    font: { size: 0, color: "rgba(0,0,0,0)" },
+    smooth: { enabled: true, type: "cubicBezier", roundness: 0.28 },
+    width: edge.edge_role === "primary" ? 1.8 : 1.25,
+    physics: false
+  };
 }
 
 function renderKnowledgeGraph(graphData) {
@@ -278,207 +328,229 @@ function renderKnowledgeGraph(graphData) {
     activeNetwork = null;
   }
 
-  const groupStyles = {
-    searched_drug: {
-      color: { background: "#2563eb", border: "#dbeafe", highlight: { background: "#2563eb", border: "#ffffff" } },
-      shape: "dot",
-      size: 38,
-      font: { color: "#ffffff", face: "Arial", size: 15, bold: true }
-    },
-    drug: { color: { background: "#60a5fa", border: "#dbeafe" }, shape: "dot", size: 26, font: { color: "#fff" } },
-    rxcui: { color: { background: "#38bdf8", border: "#bae6fd" }, shape: "dot", size: 28, font: { color: "#fff" } },
-    rxnorm: { color: { background: "#8b5cf6", border: "#ddd6fe" }, shape: "dot", size: 28, font: { color: "#fff" } },
-    atc: { color: { background: "#fb923c", border: "#fed7aa" }, shape: "dot", size: 28, font: { color: "#fff" } },
-    ndc: { color: { background: "#22c55e", border: "#bbf7d0" }, shape: "dot", size: 28, font: { color: "#fff" } },
-    analytics: { color: { background: "#facc15", border: "#fef08a" }, shape: "dot", size: 28, font: { color: "#fff" } }
-  };
+  const styledNodes = (graphData.nodes || []).map(getNodeStyle);
+  const nodeMap = new Map(styledNodes.map(node => [node.id, node]));
+  const styledEdges = (graphData.edges || []).map(edge => getEdgeStyle(edge, nodeMap));
 
-  const prepared = applyAtcExpansionState(graphData.nodes || [], graphData.edges || []);
+  activeNodes = new vis.DataSet(styledNodes);
+  activeEdges = new vis.DataSet(styledEdges);
 
-  const graphNodes = prepared.nodes.map((node) => {
-    const isMajor = node.layout_role === "center" || node.layout_role === "hub";
-    return {
-      ...node,
-      label: node.label || "",
-      shape: isMajor ? "circle" : "dot",
-      size: node.layout_role === "center" ? 46 : node.layout_role === "hub" ? 34 : node.size || 17,
-      chosen: false,
-      font: {
-        color: isMajor ? "#020617" : "#f8fafc",
-        size: node.layout_role === "detail" ? 0 : node.layout_role === "center" ? 14 : 13,
-        face: "Arial",
-        bold: isMajor,
-        align: "center",
-        vadjust: 0
-      }
-    };
-  });
-
-  const graphEdges = prepared.edges.map((edge) => ({
-    ...edge,
-    label: edge.show_label ? edge.label : "",
-    arrows: "to",
-    color: edge.color || {
-      color: edge.edge_role === "primary" ? "rgba(248,250,252,.82)" : "rgba(203,213,225,.62)",
-      highlight: "#38bdf8"
-    },
-    width: edge.edge_role === "primary" ? 2.2 : 1.5,
-    font: { color: "#cbd5e1", size: 0, align: "middle" },
-    smooth: { enabled: true, type: "curvedCW", roundness: edge.edge_role === "primary" ? 0.12 : 0.22 }
-  }));
-
-  const nodes = new vis.DataSet(graphNodes);
-  const edges = new vis.DataSet(graphEdges);
-
-  activeNetwork = new vis.Network(container, { nodes, edges }, {
-    groups: groupStyles,
-    interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true, selectConnectedEdges: false },
+  activeNetwork = new vis.Network(container, { nodes: activeNodes, edges: activeEdges }, {
+    interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
     physics: { enabled: false },
     layout: { improvedLayout: false },
-    nodes: { borderWidth: 2, chosen: false, shadow: { enabled: true, color: "rgba(0,0,0,.45)", size: 12, x: 0, y: 4 } },
-    edges: { selectionWidth: 1.5, chosen: false }
+    nodes: {
+      shape: "dot",
+      borderWidth: 3,
+      chosen: false,
+      shadow: { enabled: true, color: "rgba(0,0,0,.45)", size: 12, x: 0, y: 4 }
+    },
+    edges: { selectionWidth: 2, chosen: false }
   });
 
-  setTimeout(() => {
-    if (activeNetwork) {
-      activeNetwork.fit({ animation: true });
-    }
-  }, 160);
-
-  activeNetwork.on("hoverNode", (params) => {
-    const node = nodes.get(params.node);
-    if (node && node.layout_role === "detail" && node.hover_label) {
-      nodes.update({
-        id: node.id,
-        label: node.hover_label,
-        size: node.size || 17,
-        chosen: false,
-        font: { color: "#f8fafc", size: 13, face: "Arial", align: "center" }
-      });
-    }
+  activeNetwork.on("hoverNode", params => {
+    const node = activeNodes.get(params.node);
+    if (node) activeNodes.update({ id: node.id, size: Math.round((node.originalSize || node.size || 18) * 1.08) });
   });
-
-  activeNetwork.on("blurNode", (params) => {
-    const node = nodes.get(params.node);
-    if (node && node.layout_role === "detail") {
-      nodes.update({
-        id: node.id,
-        label: "",
-        size: node.size || 17,
-        chosen: false,
-        font: { color: "#f8fafc", size: 0, face: "Arial", align: "center" }
-      });
-    }
+  activeNetwork.on("blurNode", params => {
+    const node = activeNodes.get(params.node);
+    if (node) activeNodes.update({ id: node.id, size: node.originalSize || node.size || 18 });
   });
-
-  activeNetwork.on("click", (params) => {
+  activeNetwork.on("click", params => {
     if (params.nodes.length) {
       const id = params.nodes[0];
-      const node = prepared.nodes.find((n) => n.id === id);
-      if (id === "atc_hub" && node?.expandable) {
-        atcHierarchyExpanded = !atcHierarchyExpanded;
-        applyGraphFilters();
-        renderNodeInspector({ ...node, label: atcHierarchyExpanded ? node.expanded_label || "ATC [-]" : node.collapsed_label || "ATC [+]" });
-        return;
-      }
+      const node = (graphData.nodes || []).find(item => item.id === id) || activeNodes.get(id);
       renderNodeInspector(node);
-      setTimeout(() => {
-        if (activeNetwork) activeNetwork.unselectAll();
-      }, 0);
     } else {
-      renderNodeInspector(null);
+      renderMedicationSummaryPanel(currentPayload);
     }
   });
 
-  updateGraphMetrics({
-    nodes: prepared.nodes.filter((node) => !node.hidden),
-    edges: prepared.edges.filter((edge) => !edge.hidden)
-  });
+  setTimeout(() => activeNetwork && activeNetwork.fit({ animation: { duration: 250, easingFunction: "easeInOutQuad" } }), 100);
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function calculateMedicationScores(data) {
+  const related = data?.related_concepts?.related_concepts_count || 0;
+  const atc = data?.therapeutic_classes?.atc_count || 0;
+  const ndc = data?.ndc_crosswalk?.ndc_count || 0;
+
+  const rxnormCoverage = related > 0 ? 25 : 0;
+  const atcCoverage = Math.min(20, Math.round((atc / 10) * 20));
+  const ndcConnectivity = Math.min(25, Math.round((ndc / 1600) * 25));
+  const relationshipDensity = Math.min(30, Math.round(((related + atc) / 90) * 30));
+  const aiReadiness = Math.min(100, rxnormCoverage + atcCoverage + ndcConnectivity + relationshipDensity);
+
+  const semanticConceptBreadth = Math.min(35, Math.round((related / 80) * 35));
+  const therapeuticDepth = Math.min(30, Math.round((atc / 40) * 30));
+  const graphConnectivity = Math.min(35, Math.round(((related + atc) / 120) * 35));
+  const semanticRichness = Math.min(100, semanticConceptBreadth + therapeuticDepth + graphConnectivity);
+
+  const ndcMappingCoverage = Math.min(70, Math.round((ndc / 1600) * 70));
+  const claimsIdentifierDepth = ndc > 0 ? 20 : 0;
+  const workflowUsability = ndc > 0 ? 10 : 0;
+  const claimsReadiness = Math.min(100, ndcMappingCoverage + claimsIdentifierDepth + workflowUsability);
+
+  const interoperability = Math.min(100, Math.round(
+    (Math.min(100, related * 2) * 0.30) +
+    (Math.min(100, atc * 12) * 0.25) +
+    (Math.min(100, ndc / 8) * 0.25) +
+    (semanticRichness * 0.20)
+  ));
+
+  const clinicalIntelligence = Math.min(100, Math.round(
+    (Math.min(100, atc * 15) * 0.45) +
+    (Math.min(100, related * 2) * 0.35) +
+    (semanticRichness * 0.20)
+  ));
+
+  return {
+    related,
+    atc,
+    ndc,
+    aiReadiness,
+    semanticRichness,
+    claimsReadiness,
+    interoperability,
+    clinicalIntelligence,
+    components: { rxnormCoverage, atcCoverage, ndcConnectivity, relationshipDensity, semanticConceptBreadth, therapeuticDepth, graphConnectivity, ndcMappingCoverage, claimsIdentifierDepth, workflowUsability }
+  };
 }
 
-function formatNodeLines(value) {
-  return String(value || "")
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+function scoreMeaning(score, type = "interoperability") {
+  if (score >= 90) {
+    if (type === "claims") return "Excellent - This medication has strong package-level identifier coverage and is highly ready for claims analytics.";
+    if (type === "clinical") return "Excellent - This medication has rich clinical and therapeutic context for interpretation and reporting.";
+    if (type === "ai") return "Excellent - This medication is highly ready for AI, predictive modeling, and enterprise analytics workflows.";
+    return "Excellent - This medication is extremely well represented across healthcare terminology systems and is highly interoperable.";
+  }
+  if (score >= 70) return "Strong - This medication has solid structured data coverage with some areas that may benefit from deeper enrichment.";
+  if (score >= 40) return "Moderate - This medication has useful structured data, but some interoperability or analytics layers may be limited.";
+  return "Limited - This medication has sparse structured coverage and may require additional normalization before advanced analytics use.";
+}
+
+function getIngredient(data) {
+  const identity = data?.identity_card || {};
+  if ((identity.term_type_description || "").toLowerCase().includes("ingredient")) return identity.concept_name || identity.search_term || "—";
+  const related = data?.related_concepts?.related_concepts || [];
+  const ingredient = related.find(item => (item.term_type_description || "").toLowerCase().includes("ingredient"));
+  return ingredient?.name || identity.concept_name || identity.search_term || "—";
+}
+
+function getTherapeuticCategory(data) {
+  const atc = data?.therapeutic_classes?.atc_hierarchy || [];
+  return atc[0]?.full_class_name || "Not available from current ATC lookup";
+}
+
+function renderDetailRows(rows) {
+  return `<div class="node-details-rows">${rows.map(([label, value]) => `
+    <div class="node-detail-row"><strong>${escapeHtml(label)}</strong><p>${escapeHtml(value || "—")}</p></div>
+  `).join("")}</div>`;
+}
+
+function renderMedicationSummaryPanel(data) {
+  const el = document.getElementById("nodeInspectorContent");
+  if (!el || !data) {
+    if (el) el.innerHTML = '<p class="muted">Click a graph node to inspect its semantic layer, source, and interoperability context.</p>';
+    return;
+  }
+  const identity = data.identity_card || {};
+  const scores = calculateMedicationScores(data);
+  const concept = identity.concept_name || identity.search_term || "Medication";
+  el.innerHTML = `
+    <div class="node-details-card">
+      <h3>${escapeHtml(concept)}</h3>
+      <span class="node-layer-pill">Drug (Searched)</span>
+      ${renderDetailRows([
+        ["Type", identity.term_type_description || identity.term_type || "Drug (Searched)"],
+        ["RxCUI", identity.primary_rxcui || "—"],
+        ["Source", "RxNorm / RxNav"],
+        ["Medication Intelligence Summary", "AI-powered medication profile generated from RxNorm, ATC, NDC, and analytics coverage."],
+        ["Ingredient", getIngredient(data)],
+        ["Therapeutic Category", getTherapeuticCategory(data)],
+        ["RxNorm Relationships", String(scores.related)],
+        ["ATC Classifications", String(scores.atc)],
+        ["NDC Package Identifiers", String(scores.ndc)],
+        ["Interoperability Score", `${scores.interoperability} - ${scoreMeaning(scores.interoperability, "interoperability")}`],
+        ["Clinical Intelligence Score", `${scores.clinicalIntelligence} - ${scoreMeaning(scores.clinicalIntelligence, "clinical")}`],
+        ["Claims Readiness", scoreMeaning(scores.claimsReadiness, "claims")],
+        ["Claims Readiness Score", String(scores.claimsReadiness)],
+        ["AI Readiness", scoreMeaning(scores.aiReadiness, "ai")],
+        ["AI Readiness Score", String(scores.aiReadiness)],
+        ["Semantic Richness", String(scores.semanticRichness)]
+      ])}
+    </div>`;
+}
+
+function renderIntelligenceViewPanel(viewKey) {
+  const el = document.getElementById("nodeInspectorContent");
+  if (!el || !currentPayload) return;
+  const scores = calculateMedicationScores(currentPayload);
+  const identity = currentPayload.identity_card || {};
+  const view = VIEW_CONFIG[viewKey];
+  const rowsByView = {
+    interoperability: [
+      ["Ingredient", getIngredient(currentPayload)],
+      ["Primary RxCUI", identity.primary_rxcui || "—"],
+      ["RxNorm Relationships", String(scores.related)],
+      ["ATC Classifications", String(scores.atc)],
+      ["NDC Package Identifiers", String(scores.ndc)],
+      ["Terminology Coverage", scores.interoperability >= 90 ? "Excellent" : scores.interoperability >= 70 ? "Strong" : scores.interoperability >= 40 ? "Moderate" : "Limited"],
+      ["Interoperability Score & Meaning", `${scores.interoperability} - ${scoreMeaning(scores.interoperability, "interoperability")}`]
+    ],
+    clinical: [
+      ["Ingredient", getIngredient(currentPayload)],
+      ["Therapeutic Category", getTherapeuticCategory(currentPayload)],
+      ["RxNorm Relationships", String(scores.related)],
+      ["ATC Classifications", String(scores.atc)],
+      ["Clinical Intelligence Score", `${scores.clinicalIntelligence} - ${scoreMeaning(scores.clinicalIntelligence, "clinical")}`]
+    ],
+    claims: [
+      ["Primary RxCUI", identity.primary_rxcui || "—"],
+      ["NDC Package Identifiers", String(scores.ndc)],
+      ["Claims Readiness", scoreMeaning(scores.claimsReadiness, "claims")],
+      ["Claims Readiness Score", String(scores.claimsReadiness)]
+    ],
+    aiReadiness: [
+      ["RxNorm Relationships", String(scores.related)],
+      ["ATC Classifications", String(scores.atc)],
+      ["NDC Package Identifiers", String(scores.ndc)],
+      ["Semantic Richness", String(scores.semanticRichness)],
+      ["AI Readiness", scoreMeaning(scores.aiReadiness, "ai")],
+      ["AI Readiness Score", String(scores.aiReadiness)]
+    ]
+  };
+  el.innerHTML = `
+    <div class="node-details-card">
+      <h3>${escapeHtml(view.title)}</h3>
+      <span class="node-layer-pill">Intelligence View</span>
+      ${renderDetailRows(rowsByView[viewKey] || [])}
+    </div>`;
 }
 
 function renderNodeInspector(node) {
   const el = document.getElementById("nodeInspectorContent");
   if (!node) {
-    el.innerHTML = '<p class="muted">Click a graph node to inspect its semantic layer, source, and interoperability context.</p>';
+    renderMedicationSummaryPanel(currentPayload);
     return;
   }
-
-  const layerLabels = {
-    searched_drug: "Drug (Searched)",
-    drug: "Drug",
-    rxcui: "RxCUI",
-    rxnorm: "RxNorm",
-    atc: "ATC",
-    ndc: "NDC",
-    analytics: "Analytics"
-  };
-
-  const fallbackDescriptions = {
-    searched_drug: "Static searched medication at the center of the knowledge graph. This node always remains visible while filters show or hide the surrounding category branches.",
-    drug: "Related drug-name concept connected to the searched medication.",
-    rxcui: "Standardized RxNorm concept identifier used as the interoperability anchor.",
-    rxnorm: "RxNorm semantic medication relationship that enriches the medication identity.",
-    atc: "Therapeutic classification signal used for clinical grouping and analytics.",
-    ndc: "Package or claims-level medication identifier used in pharmacy claims workflows.",
-    analytics: "Downstream analytics layer enabled by normalized medication intelligence."
-  };
-
-  const titleLines = formatNodeLines(node.title);
-  const nodeName = node.label || node.hover_label || titleLines[0] || node.id || "Selected Node";
-  const nodeType = node.node_type || layerLabels[node.group] || node.group || "Graph Node";
-  const description = node.description || titleLines.slice(1).join("\n") || fallbackDescriptions[node.group] || "Medication intelligence graph node.";
-  const source = node.source || (node.group === "atc" ? "RxClass / RxNav" : "RxNorm / RxNav");
-  const rxcui = node.rxcui || (node.group === "rxcui" ? titleLines[0] : "");
-  const additional = node.additional_context || titleLines.slice(0, 4).join("\n");
-
+  if (node.group === "searched_drug" || node.id === "drug_center") {
+    renderMedicationSummaryPanel(currentPayload);
+    return;
+  }
+  const displayName = node.hover_label || node.label || node.title || "Medication node";
   const rows = [
-    ["Type", nodeType],
-    ["RxCUI", rxcui],
-    ["Source", source],
-    ["Description", description],
-    ["Additional Context", additional]
-  ].filter(([, value]) => String(value || "").trim());
-
+    ["Type", node.node_type || node.group || "Medication Node"],
+    ["RxCUI", node.rxcui || "—"],
+    ["Source", node.source || "RxNorm Intelligence Explorer"],
+    ["Description", node.description || node.title || "Medication intelligence node."],
+    ["Additional Context", node.additional_context || node.title || "—"]
+  ];
   el.innerHTML = `
     <div class="node-details-card">
-      <h3>${escapeHtml(nodeName)}</h3>
-      <span class="node-layer-pill">${escapeHtml(layerLabels[node.group] || node.group || "Layer")}</span>
-      <div class="node-details-rows">
-        ${rows.map(([label, value]) => `
-          <div class="node-detail-row">
-            <strong>${escapeHtml(label)}</strong>
-            <p>${escapeHtml(value).replace(/\n/g, "<br>")}</p>
-          </div>
-        `).join("")}
-      </div>
-    </div>
-  `;
-}
-
-function updateGraphMetrics(graphData) {
-  const nodes = graphData.nodes || [];
-  const edges = graphData.edges || [];
-  const layers = new Set(nodes.map((node) => node.group));
-  document.getElementById("graphNodeCount").textContent = nodes.length;
-  document.getElementById("graphEdgeCount").textContent = edges.length;
-  document.getElementById("graphLayerCount").textContent = layers.size;
-  document.getElementById("graphDepthScore").textContent = Math.min(100, Math.round((nodes.length + edges.length + layers.size * 5) / 2));
+      <h3>${escapeHtml(displayName)}</h3>
+      <span class="node-layer-pill">${escapeHtml(node.group || "Node")}</span>
+      ${renderDetailRows(rows)}
+    </div>`;
 }
 
 function renderPipeline(data) {
@@ -491,7 +563,7 @@ function renderPipeline(data) {
   const ndcCount = data.ndc_crosswalk?.ndc_count || 0;
   const firstAtc = data.therapeutic_classes?.atc_hierarchy?.[0];
   const firstAtcValue = firstAtc ? `${firstAtc.full_class_id} — ${firstAtc.full_class_name}` : "No ATC class returned";
-  const pipelineNodes = [
+  const nodes = [
     { title: "Drug Search", value: searchTerm, description: "User-entered medication name captured by the application.", tag: "Input Layer" },
     { title: "RxCUI Resolution", value: rxcui, description: "RxNorm standardizes the medication into a durable concept identifier.", tag: "Identity Layer" },
     { title: "RxNorm Concept", value: concept, description: "Medication identity is enriched with term type, concept name, and vocabulary context.", tag: "Semantic Layer" },
@@ -499,10 +571,10 @@ function renderPipeline(data) {
     { title: "NDC Crosswalk", value: `${ndcCount} records`, description: "NDC mappings connect RxNorm concepts to pharmacy claims data.", tag: "Claims Layer" },
     { title: "Analytics Intelligence", value: "AI-ready", description: "Normalized medication data can support trend analysis, forecasting, dashboards, and ML features.", tag: "Intelligence Layer" }
   ];
-  pipelineNodes.forEach((node, index) => {
+  nodes.forEach((node, index) => {
     const div = document.createElement("div");
     div.className = "pipeline-node";
-    div.innerHTML = `<div class="node-index">${index + 1}</div><h3>${node.title}</h3><div class="pipeline-value">${node.value}</div><p>${node.description}</p><span class="pipeline-tag">${node.tag}</span>`;
+    div.innerHTML = `<div class="node-index">${index + 1}</div><h3>${escapeHtml(node.title)}</h3><div class="pipeline-value">${escapeHtml(node.value)}</div><p>${escapeHtml(node.description)}</p><span class="pipeline-tag">${escapeHtml(node.tag)}</span>`;
     container.appendChild(div);
   });
 }
@@ -512,18 +584,10 @@ function renderAtcExplorer(data) {
   const tree = document.getElementById("atcTree");
   tree.innerHTML = "";
   const uniqueMap = new Map();
-  atcItems.forEach((item) => {
+  atcItems.forEach(item => {
     const key = item.full_class_id || item.atc_full_code || "UNKNOWN";
     if (!uniqueMap.has(key)) {
-      uniqueMap.set(key, {
-        full_class_id: item.full_class_id || key,
-        full_class_name: item.full_class_name || "Unnamed therapeutic class",
-        atc_level_1_code: item.atc_level_1_code || "",
-        atc_level_2_code: item.atc_level_2_code || "",
-        atc_level_3_code: item.atc_level_3_code || "",
-        atc_level_4_code: item.atc_level_4_code || "",
-        records: []
-      });
+      uniqueMap.set(key, { full_class_id: item.full_class_id || key, full_class_name: item.full_class_name || "Unnamed therapeutic class", atc_level_1_code: item.atc_level_1_code || "", atc_level_2_code: item.atc_level_2_code || "", atc_level_3_code: item.atc_level_3_code || "", atc_level_4_code: item.atc_level_4_code || "", records: [] });
     }
     uniqueMap.get(key).records.push(item);
   });
@@ -539,8 +603,8 @@ function renderAtcExplorer(data) {
   uniqueItems.slice(0, 12).forEach((item, index) => {
     const group = document.createElement("div");
     group.className = `atc-group ${index === 0 ? "open" : ""}`;
-    const recordPills = item.records.slice(0, 5).map((record) => `<div class="atc-record-pill">Relationship Source: ${record.rela_source || "RxClass"} | Drug Name: ${record.drug_name || "N/A"} | RxCUI: ${record.rxcui || "N/A"}</div>`).join("");
-    group.innerHTML = `<button class="atc-group-header"><div class="atc-header-left"><span class="atc-toggle">${index === 0 ? "−" : "+"}</span><div><strong>${item.full_class_name}</strong><div class="list-meta">ATC Code: ${item.full_class_id}</div></div></div><span class="atc-code-badge">${item.records.length} record${item.records.length === 1 ? "" : "s"}</span></button><div class="atc-group-body"><div class="atc-level-grid"><div class="atc-level-card"><span>Level 1</span><strong>${item.atc_level_1_code || "N/A"}</strong></div><div class="atc-level-card"><span>Level 2</span><strong>${item.atc_level_2_code || "N/A"}</strong></div><div class="atc-level-card"><span>Level 3</span><strong>${item.atc_level_3_code || "N/A"}</strong></div><div class="atc-level-card"><span>Level 4</span><strong>${item.atc_level_4_code || "N/A"}</strong></div></div><div class="atc-record-list">${recordPills}${item.records.length > 5 ? `<div class="atc-record-pill">...and ${item.records.length - 5} more supporting records.</div>` : ""}</div></div>`;
+    const recordPills = item.records.slice(0, 5).map(record => `<div class="atc-record-pill">Relationship Source: ${escapeHtml(record.rela_source || "RxClass")} | Drug Name: ${escapeHtml(record.drug_name || "N/A")} | RxCUI: ${escapeHtml(record.rxcui || "N/A")}</div>`).join("");
+    group.innerHTML = `<button class="atc-group-header"><div class="atc-header-left"><span class="atc-toggle">${index === 0 ? "−" : "+"}</span><div><strong>${escapeHtml(item.full_class_name)}</strong><div class="list-meta">ATC Code: ${escapeHtml(item.full_class_id)}</div></div></div><span class="atc-code-badge">${item.records.length} record${item.records.length === 1 ? "" : "s"}</span></button><div class="atc-group-body"><div class="atc-level-grid"><div class="atc-level-card"><span>Level 1</span><strong>${escapeHtml(item.atc_level_1_code || "N/A")}</strong></div><div class="atc-level-card"><span>Level 2</span><strong>${escapeHtml(item.atc_level_2_code || "N/A")}</strong></div><div class="atc-level-card"><span>Level 3</span><strong>${escapeHtml(item.atc_level_3_code || "N/A")}</strong></div><div class="atc-level-card"><span>Level 4</span><strong>${escapeHtml(item.atc_level_4_code || "N/A")}</strong></div></div><div class="atc-record-list">${recordPills}${item.records.length > 5 ? `<div class="atc-record-pill">...and ${item.records.length - 5} more supporting records.</div>` : ""}</div></div>`;
     const header = group.querySelector(".atc-group-header");
     const toggle = group.querySelector(".atc-toggle");
     header.addEventListener("click", () => {
@@ -562,7 +626,7 @@ function renderTherapeuticClasses(data) {
   atcItems.slice(0, 20).forEach((item, index) => {
     const div = document.createElement("div");
     div.className = "list-item";
-    div.innerHTML = `<strong>${index + 1}. ${item.full_class_id || "N/A"} — ${item.full_class_name || "Unnamed Class"}</strong><div class="list-meta">Level 1: ${item.atc_level_1_code || "N/A"} | Level 2: ${item.atc_level_2_code || "N/A"} | Level 3: ${item.atc_level_3_code || "N/A"} | Level 4: ${item.atc_level_4_code || "N/A"}</div><div class="list-meta">Source: ${item.rela_source || "RxClass"}</div>`;
+    div.innerHTML = `<strong>${index + 1}. ${escapeHtml(item.full_class_id || "N/A")} — ${escapeHtml(item.full_class_name || "Unnamed Class")}</strong><div class="list-meta">Level 1: ${escapeHtml(item.atc_level_1_code || "N/A")} | Level 2: ${escapeHtml(item.atc_level_2_code || "N/A")} | Level 3: ${escapeHtml(item.atc_level_3_code || "N/A")} | Level 4: ${escapeHtml(item.atc_level_4_code || "N/A")}</div><div class="list-meta">Source: ${escapeHtml(item.rela_source || "RxClass")}</div>`;
     container.appendChild(div);
   });
 }
@@ -578,7 +642,7 @@ function renderNdcCrosswalk(data) {
   ndcItems.slice(0, 60).forEach((item, index) => {
     const div = document.createElement("div");
     div.className = "list-item";
-    div.innerHTML = `<strong>${index + 1}. NDC11: ${item.ndc11 || "N/A"}</strong><div class="list-meta">NDC10: ${item.ndc10 || "N/A"} | NDC9: ${item.ndc9 || "N/A"} | Clinical RxCUI: ${item.clinical_drug_rxcui || item.rxcui || "N/A"}</div><div class="list-meta">Source: ${item.source || "RxNorm Related NDC"}</div>`;
+    div.innerHTML = `<strong>${index + 1}. NDC11: ${escapeHtml(item.ndc11 || "N/A")}</strong><div class="list-meta">NDC10: ${escapeHtml(item.ndc10 || "N/A")} | NDC9: ${escapeHtml(item.ndc9 || "N/A")} | Clinical RxCUI: ${escapeHtml(item.clinical_drug_rxcui || item.rxcui || "N/A")}</div><div class="list-meta">Source: ${escapeHtml(item.source || "RxNorm Related NDC")}</div>`;
     container.appendChild(div);
   });
 }
@@ -586,40 +650,53 @@ function renderNdcCrosswalk(data) {
 function renderBriefing(data) {
   const concept = data.identity_card?.concept_name || "This medication";
   const rxcui = data.identity_card?.primary_rxcui || "N/A";
-  const related = data.related_concepts?.related_concepts_count || 0;
-  const atc = data.therapeutic_classes?.atc_count || 0;
-  const ndc = data.ndc_crosswalk?.ndc_count || 0;
-  const aiScore = Math.min(100, Math.round((related / 80) * 25 + (atc / 40) * 30 + (ndc / 1600) * 45));
-  const semanticScore = Math.min(100, Math.round((related + atc) * 1.2));
-  const claimsScore = Math.min(100, Math.round((ndc / 1600) * 100));
-  currentScores = { aiReadiness: aiScore, semanticRichness: semanticScore, claimsReadiness: claimsScore };
+  const scores = calculateMedicationScores(data);
   document.getElementById("briefingTitle").textContent = `${concept} Intelligence Briefing`;
   document.getElementById("executiveSummary").textContent = `${concept} resolves to RxCUI ${rxcui}, creating a standardized medication identity that can be recognized consistently across healthcare systems.`;
-  document.getElementById("interopNarrative").textContent = `The current lookup returned ${related} related RxNorm concepts and ${atc} therapeutic class records, showing how one medication can be translated into normalized semantic and clinical categories.`;
-  document.getElementById("clinicalCommentary").textContent = "The ATC hierarchy provides clinical grouping logic that supports formulary management, therapeutic trend analysis, and medication class reporting.";
-  document.getElementById("analyticsImplications").textContent = `The ${ndc} NDC mappings connect this medication identity to pharmacy claims workflows, enabling downstream dashboards, predictive modeling features, and AI-ready claims intelligence.`;
-  document.getElementById("aiReadinessScore").textContent = aiScore;
-  document.getElementById("semanticRichnessScore").textContent = semanticScore;
-  document.getElementById("claimsReadinessScore").textContent = claimsScore;
+  document.getElementById("interopNarrative").textContent = `The current lookup returned ${scores.related} related RxNorm concepts and ${scores.atc} therapeutic class records, showing how one medication can be translated into normalized semantic and clinical categories.`;
+  document.getElementById("clinicalCommentary").textContent = `The ATC hierarchy provides clinical grouping logic that supports formulary management, therapeutic trend analysis, and medication class reporting.`;
+  document.getElementById("analyticsImplications").textContent = `The ${scores.ndc} NDC mappings connect this medication identity to pharmacy claims workflows, enabling downstream dashboards, predictive modeling features, and AI-ready claims intelligence.`;
+  document.getElementById("aiReadinessScore").textContent = scores.aiReadiness;
+  document.getElementById("semanticRichnessScore").textContent = scores.semanticRichness;
+  document.getElementById("claimsReadinessScore").textContent = scores.claimsReadiness;
+  const c = scores.components;
+  currentScoreBreakdowns = {
+    aiReadiness: { title: `AI Readiness Score: ${scores.aiReadiness}`, description: "Measures how effectively a medication concept can support AI, analytics, and interoperability workflows.", rows: [["RxNorm Coverage", c.rxnormCoverage, 25], ["ATC Coverage", c.atcCoverage, 20], ["NDC Connectivity", c.ndcConnectivity, 25], ["Relationship Density", c.relationshipDensity, 30]] },
+    semanticRichness: { title: `Semantic Richness: ${scores.semanticRichness}`, description: "Quantifies the amount of semantic information available for a medication concept.", rows: [["RxNorm Concept Breadth", c.semanticConceptBreadth, 35], ["Therapeutic Classification Depth", c.therapeuticDepth, 30], ["Knowledge Graph Connectivity", c.graphConnectivity, 35]] },
+    claimsReadiness: { title: `Claims Readiness: ${scores.claimsReadiness}`, description: "Measures how completely a medication can be connected to pharmacy claims data through NDC mappings.", rows: [["NDC Mapping Coverage", c.ndcMappingCoverage, 70], ["Claims Identifier Depth", c.claimsIdentifierDepth, 20], ["Workflow Usability", c.workflowUsability, 10]] }
+  };
+  attachScoreTooltips();
 }
 
-function openScoreModal(scoreKey) {
-  const modal = document.getElementById("scoreModal");
-  const definition = SCORE_DEFINITIONS[scoreKey];
-  if (!modal || !definition) return;
-  document.getElementById("scoreModalTitle").textContent = `${definition.title}: ${currentScores?.[scoreKey] ?? 0}`;
-  document.getElementById("scoreModalDescription").textContent = definition.description;
-  const rows = document.getElementById("scoreBreakdownRows");
-  rows.innerHTML = "";
-  definition.rows.forEach(([label, value]) => {
-    const row = document.createElement("div");
-    row.className = "score-breakdown-row";
-    row.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
-    rows.appendChild(row);
+function attachScoreTooltips() {
+  const definitions = {
+    aiReadiness: "Measures how effectively a medication concept can support AI, analytics, and interoperability workflows. Higher scores indicate stronger readiness for machine learning and enterprise data integration.",
+    semanticRichness: "Quantifies the amount of semantic information available for a medication concept. Richer semantic networks improve explainability and downstream analytics.",
+    claimsReadiness: "Measures how completely a medication can be connected to pharmacy claims data through NDC mappings."
+  };
+  document.querySelectorAll(".score-card").forEach(card => {
+    const key = card.dataset.scoreKey;
+    const icon = card.querySelector(".info-icon");
+    if (icon) icon.dataset.tooltip = definitions[key] || "";
+    card.onclick = () => openScoreModal(key);
   });
+}
+
+function openScoreModal(key) {
+  const modal = document.getElementById("scoreModal");
+  const score = currentScoreBreakdowns[key];
+  if (!modal || !score) return;
+  document.getElementById("scoreModalTitle").textContent = score.title;
+  document.getElementById("scoreModalDescription").textContent = score.description;
+  document.getElementById("scoreBreakdownRows").innerHTML = score.rows.map(([label, value, max]) => `<div class="score-breakdown-row"><span>${escapeHtml(label)}</span><strong>${value} / ${max}</strong></div>`).join("");
   modal.classList.remove("hidden");
 }
 
 function closeScoreModal() {
-  document.getElementById("scoreModal")?.classList.add("hidden");
+  const modal = document.getElementById("scoreModal");
+  if (modal) modal.classList.add("hidden");
 }
+
+document.getElementById("scoreModalClose")?.addEventListener("click", closeScoreModal);
+document.getElementById("scoreModal")?.addEventListener("click", event => { if (event.target.id === "scoreModal") closeScoreModal(); });
+document.addEventListener("keydown", event => { if (event.key === "Escape") closeScoreModal(); });

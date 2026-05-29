@@ -139,3 +139,65 @@
   border-style:dashed;
   border-color:var(--orange);
 }
+
+
+/* =========================================================
+   Intelligence Views + Medication Intelligence Summary
+   ========================================================= */
+.intelligence-view-list{
+  display:grid;
+  gap:9px;
+}
+.intelligence-view-btn{
+  display:flex!important;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  text-align:left;
+  margin-bottom:0!important;
+}
+.intelligence-view-btn span:first-child{
+  flex:1;
+}
+.intelligence-view-btn.active{
+  border-color:rgba(56,189,248,.72)!important;
+  background:linear-gradient(135deg,rgba(37,99,235,.46),rgba(56,189,248,.18))!important;
+  color:#f8fafc!important;
+  box-shadow:0 0 0 3px rgba(56,189,248,.08);
+}
+.view-info-icon{
+  margin-left:8px!important;
+  opacity:.96;
+  flex:0 0 auto;
+}
+.view-info-icon::after{
+  left:auto!important;
+  right:0!important;
+  transform:none!important;
+  bottom:calc(100% + 10px)!important;
+  width:min(330px,70vw)!important;
+}
+.view-info-icon:hover::after,.view-info-icon:focus::after{
+  transform:translateY(-2px)!important;
+}
+.node-details-card{
+  display:grid;
+  gap:10px;
+}
+.node-detail-row strong{
+  color:#93c5fd;
+  font-weight:900;
+}
+.node-detail-row p{
+  white-space:pre-line;
+}
+
+/* Keep visible graph labels bold and readable. */
+.vis-network text{
+  font-weight:800!important;
+}
+
+@media(max-width:1200px){
+  .view-info-icon::after{right:auto!important;left:50%!important;transform:translateX(-50%)!important}
+  .view-info-icon:hover::after,.view-info-icon:focus::after{transform:translateX(-50%) translateY(-2px)!important}
+}
