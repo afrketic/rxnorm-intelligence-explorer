@@ -98,12 +98,12 @@
           <div class="graph-control-grid">
             <aside class="graph-controls">
               <div class="control-title">Layer Filters</div>
-              <label><input type="checkbox" class="layer-toggle" value="drug" checked /> Drug</label>
-              <label><input type="checkbox" class="layer-toggle" value="rxcui" checked /> RxCUI</label>
-              <label><input type="checkbox" class="layer-toggle" value="rxnorm" checked /> RxNorm</label>
-              <label><input type="checkbox" class="layer-toggle" value="atc" checked /> ATC</label>
-              <label><input type="checkbox" class="layer-toggle" value="ndc" checked /> NDC</label>
-              <label><input type="checkbox" class="layer-toggle" value="analytics" checked /> Analytics</label>
+              <label><input type="checkbox" class="layer-toggle" value="drug" checked /> <span class="layer-dot drug-dot"></span>Drug</label>
+              <label><input type="checkbox" class="layer-toggle" value="rxcui" checked /> <span class="layer-dot rxcui-dot"></span>RxCUI</label>
+              <label><input type="checkbox" class="layer-toggle" value="rxnorm" checked /> <span class="layer-dot rxnorm-dot"></span>RxNorm</label>
+              <label><input type="checkbox" class="layer-toggle" value="atc" checked /> <span class="layer-dot atc-dot"></span>ATC</label>
+              <label><input type="checkbox" class="layer-toggle" value="ndc" checked /> <span class="layer-dot ndc-dot"></span>NDC</label>
+              <label><input type="checkbox" class="layer-toggle" value="analytics" checked /> <span class="layer-dot analytics-dot"></span>Analytics</label>
 
               <div class="control-title spacing">Graph Actions</div>
               <button id="fitGraphButton" class="secondary-btn full-btn">Fit Graph</button>
@@ -128,6 +128,16 @@
                 <div><span id="graphEdgeCount">0</span><small>Edges</small></div>
                 <div><span id="graphLayerCount">0</span><small>Layers</small></div>
                 <div><span id="graphDepthScore">0</span><small>Depth Score</small></div>
+              </div>
+
+              <div class="control-title spacing">Legend</div>
+              <div class="graph-legend">
+                <div><span class="layer-dot drug-dot"></span>Drug</div>
+                <div><span class="layer-dot rxcui-dot"></span>RxCUI</div>
+                <div><span class="layer-dot rxnorm-dot"></span>RxNorm</div>
+                <div><span class="layer-dot atc-dot"></span>ATC</div>
+                <div><span class="layer-dot ndc-dot"></span>NDC</div>
+                <div><span class="layer-dot analytics-dot"></span>Analytics</div>
               </div>
             </aside>
           </div>
