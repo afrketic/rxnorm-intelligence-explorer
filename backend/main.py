@@ -42,12 +42,14 @@ def _detail_node(node_id, display_text, group, description, x, y, size=18):
 
     The text is preserved in the hover tooltip so the graph stays clean while
     still allowing users to inspect each outer detail circle on hover.
+    Multiple tooltip fields use newline characters so each item appears on
+    its own line instead of showing raw HTML such as <br>.
     """
     display_text = str(display_text or "").strip()
     description = str(description or "").strip()
 
     if display_text and description:
-        title = f"{display_text}<br>{description}"
+        title = f"{display_text}\n{description}"
     else:
         title = display_text or description or "Related detail"
 
