@@ -137,6 +137,17 @@
               <button id="showAllGraphButton" class="secondary-btn full-btn">Show All Layers</button>
               <button id="focusAtcButton" class="secondary-btn full-btn">Focus ATC</button>
               <button id="focusNdcButton" class="secondary-btn full-btn">Focus NDC</button>
+
+              <div class="control-title spacing">Legend</div>
+              <div class="graph-legend left-legend">
+                <div><span class="layer-dot center-dot"></span>Searched Drug</div>
+                <div><span class="layer-dot drug-dot"></span>Drug</div>
+                <div><span class="layer-dot rxcui-dot"></span>RxCUI</div>
+                <div><span class="layer-dot rxnorm-dot"></span>RxNorm</div>
+                <div><span class="layer-dot atc-dot"></span>ATC</div>
+                <div><span class="layer-dot ndc-dot"></span>NDC</div>
+                <div><span class="layer-dot analytics-dot"></span>Analytics</div>
+              </div>
             </aside>
 
             <section class="graph-shell">
@@ -144,9 +155,9 @@
             </section>
 
             <aside class="node-inspector">
-              <div class="control-title">Node Inspector</div>
+              <div class="control-title">Node Details</div>
               <div id="nodeInspectorContent">
-                <p class="muted">Click a graph node to inspect its semantic layer and interoperability meaning.</p>
+                <p class="muted">Click a graph node to inspect its semantic layer, source, and interoperability context.</p>
               </div>
 
               <div class="control-title spacing">Graph Metrics</div>
@@ -155,17 +166,6 @@
                 <div><span id="graphEdgeCount">0</span><small>Edges</small></div>
                 <div><span id="graphLayerCount">0</span><small>Layers</small></div>
                 <div><span id="graphDepthScore">0</span><small>Depth Score</small></div>
-              </div>
-
-              <div class="control-title spacing">Legend</div>
-              <div class="graph-legend">
-                <div><span class="layer-dot center-dot"></span>Searched Drug</div>
-                <div><span class="layer-dot drug-dot"></span>Drug</div>
-                <div><span class="layer-dot rxcui-dot"></span>RxCUI</div>
-                <div><span class="layer-dot rxnorm-dot"></span>RxNorm</div>
-                <div><span class="layer-dot atc-dot"></span>ATC</div>
-                <div><span class="layer-dot ndc-dot"></span>NDC</div>
-                <div><span class="layer-dot analytics-dot"></span>Analytics</div>
               </div>
             </aside>
           </div>

@@ -381,23 +381,79 @@ function renderKnowledgeGraph(graphData) {
   });
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function formatNodeLines(value) {
+  return String(value || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function renderNodeInspector(node) {
   const el = document.getElementById("nodeInspectorContent");
   if (!node) {
-    el.innerHTML = '<p class="muted">Click a graph node to inspect its semantic layer and interoperability meaning.</p>';
+    el.innerHTML = '<p class="muted">Click a graph node to inspect its semantic layer, source, and interoperability context.</p>';
     return;
   }
-  const descriptions = {
+
+  const layerLabels = {
+    searched_drug: "Drug (Searched)",
+    drug: "Drug",
+    rxcui: "RxCUI",
+    rxnorm: "RxNorm",
+    atc: "ATC",
+    ndc: "NDC",
+    analytics: "Analytics"
+  };
+
+  const fallbackDescriptions = {
     searched_drug: "Static searched medication at the center of the knowledge graph. This node always remains visible while filters show or hide the surrounding category branches.",
-    drug: "Related drug-name concepts around the searched medication.",
+    drug: "Related drug-name concept connected to the searched medication.",
     rxcui: "Standardized RxNorm concept identifier used as the interoperability anchor.",
-    rxnorm: "RxNorm concept identity enriched with semantic context.",
+    rxnorm: "RxNorm semantic medication relationship that enriches the medication identity.",
     atc: "Therapeutic classification signal used for clinical grouping and analytics.",
     ndc: "Package or claims-level medication identifier used in pharmacy claims workflows.",
     analytics: "Downstream analytics layer enabled by normalized medication intelligence."
   };
-  const title = (node.title || "").replace(/\n/g, "<br>");
-  el.innerHTML = `<div class="list-item"><strong>${node.label || node.hover_label || node.id}</strong><div class="list-meta">Layer: ${node.group}</div><p>${title || descriptions[node.group] || "Medication intelligence node."}</p><p>${descriptions[node.group] || ""}</p></div>`;
+
+  const titleLines = formatNodeLines(node.title);
+  const nodeName = node.label || node.hover_label || titleLines[0] || node.id || "Selected Node";
+  const nodeType = node.node_type || layerLabels[node.group] || node.group || "Graph Node";
+  const description = node.description || titleLines.slice(1).join("\n") || fallbackDescriptions[node.group] || "Medication intelligence graph node.";
+  const source = node.source || (node.group === "atc" ? "RxClass / RxNav" : "RxNorm / RxNav");
+  const rxcui = node.rxcui || (node.group === "rxcui" ? titleLines[0] : "");
+  const additional = node.additional_context || titleLines.slice(0, 4).join("\n");
+
+  const rows = [
+    ["Type", nodeType],
+    ["RxCUI", rxcui],
+    ["Source", source],
+    ["Description", description],
+    ["Additional Context", additional]
+  ].filter(([, value]) => String(value || "").trim());
+
+  el.innerHTML = `
+    <div class="node-details-card">
+      <h3>${escapeHtml(nodeName)}</h3>
+      <span class="node-layer-pill">${escapeHtml(layerLabels[node.group] || node.group || "Layer")}</span>
+      <div class="node-details-rows">
+        ${rows.map(([label, value]) => `
+          <div class="node-detail-row">
+            <strong>${escapeHtml(label)}</strong>
+            <p>${escapeHtml(value).replace(/\n/g, "<br>")}</p>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
 }
 
 function updateGraphMetrics(graphData) {

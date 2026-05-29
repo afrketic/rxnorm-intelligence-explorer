@@ -48,3 +48,54 @@
 .score-breakdown-row strong{color:white}
 
 @media(max-width:900px){.autocomplete-wrap{width:100%;margin-bottom:12px}.suggestion-box{position:relative;top:8px}.score-panel .score-card{margin-bottom:16px}}
+
+/* =========================================================
+   Concentric graph refinement + Node Details panel
+   ========================================================= */
+.node-inspector .control-title:first-child::after{
+  content:"";
+}
+.node-details-card h3{
+  color:var(--blue);
+  margin:0 0 10px;
+  font-size:18px;
+  line-height:1.25;
+  word-break:break-word;
+}
+.node-layer-pill{
+  display:inline-block;
+  color:#93c5fd;
+  background:rgba(37,99,235,.14);
+  border:1px solid rgba(96,165,250,.45);
+  border-radius:999px;
+  padding:7px 10px;
+  font-size:12px;
+  font-weight:900;
+  margin-bottom:14px;
+}
+.node-details-rows{
+  display:grid;
+  gap:12px;
+  border-top:1px solid rgba(148,163,184,.18);
+  padding-top:14px;
+}
+.node-detail-row strong{
+  display:block;
+  color:#93c5fd;
+  font-size:12px;
+  margin-bottom:5px;
+}
+.node-detail-row p{
+  color:var(--muted);
+  margin:0;
+  line-height:1.45;
+  font-size:13px;
+  word-break:break-word;
+}
+.left-legend{
+  margin-top:6px;
+}
+.graph-shell{
+  min-height:620px;
+}
+@media(max-width:900px){.graph-shell{min-height:480px}}

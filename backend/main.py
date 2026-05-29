@@ -162,6 +162,15 @@ def _radial_child_positions(cx, cy, radius, outward_deg, count, span_deg=120):
     return coords
 
 
+def _point_on_circle(cx, cy, radius, angle_deg):
+    """Returns a fixed x/y coordinate on a concentric graph ring."""
+    radians = math.radians(angle_deg)
+    return (
+        round(cx + radius * math.cos(radians)),
+        round(cy + radius * math.sin(radians))
+    )
+
+
 def _normalize_graph_payload(nodes, edges):
     """
     Final graph-wide formatting pass.
@@ -232,61 +241,27 @@ def get_drug_graph(drug_name: str):
     primary_rxcui = identity.get("primary_rxcui", "") or ""
 
     # Fixed dashboard direction:
-    # center searched drug is static -> category hubs -> detail rings.
-    # Drug branch and NDC branch are separated to reduce cross-line clutter.
+    # center searched drug is static -> evenly spaced category ring -> detail rings.
     center = (0, 0)
-    hub_radius = 300
+    hub_radius = 315
+    detail_radius = 130
 
-    hubs = {
-        "rxnorm_hub": (
-            "RxNorm",
-            "rxnorm",
-            "RxNorm semantic medication identity and related concept records.",
-            -150,
-            -260,
-            240,
-        ),
-        "rxcui_hub": (
-            "RxCUI",
-            "rxcui",
-            "Standardized RxNorm Concept Unique Identifier.",
-            150,
-            -260,
-            300,
-        ),
-        "atc_hub": (
-            "ATC",
-            "atc",
-            "Therapeutic class hierarchy used for clinical grouping.",
-            hub_radius,
-            0,
-            0,
-        ),
-        "ndc_hub": (
-            "NDC",
-            "ndc",
-            "Claims-ready National Drug Code mappings. NDC package context is preserved in hover metadata without drawing noisy cross-link lines.",
-            185,
-            245,
-            45,
-        ),
-        "drug_hub": (
-            "Drug",
-            "drug",
-            "Related drug-name concepts. The searched medication remains static in the center even when this branch is filtered.",
-            -185,
-            245,
-            135,
-        ),
-        "analytics_hub": (
-            "Analytics",
-            "analytics",
-            "Downstream reporting, claims intelligence, and machine-learning use cases.",
-            0,
-            330,
-            90,
-        ),
-    }
+    # The category ring is intentionally equidistant: six semantic hubs spaced
+    # every 60 degrees around the searched drug, similar to the SaaS circle
+    # diagram direction. Positive Y renders downward in vis-network.
+    hub_specs = [
+        ("atc_hub", "ATC", "atc", "Therapeutic class hierarchy used for clinical grouping.", 0),
+        ("ndc_hub", "NDC", "ndc", "Claims-ready National Drug Code mappings. NDC package context is preserved in hover metadata without drawing noisy cross-link lines.", 60),
+        ("analytics_hub", "Analytics", "analytics", "Downstream reporting, claims intelligence, and machine-learning use cases.", 120),
+        ("drug_hub", "Drug", "drug", "Related drug-name concepts. The searched medication remains static in the center even when this branch is filtered.", 180),
+        ("rxnorm_hub", "RxNorm", "rxnorm", "RxNorm semantic medication identity and related concept records.", 240),
+        ("rxcui_hub", "RxCUI", "rxcui", "Standardized RxNorm Concept Unique Identifier.", 300),
+    ]
+
+    hubs = {}
+    for hub_id, label, group, title, angle in hub_specs:
+        x, y = _point_on_circle(center[0], center[1], hub_radius, angle)
+        hubs[hub_id] = (label, group, title, x, y, angle)
 
     nodes.append(_fixed_node(
         "drug_center",
@@ -302,9 +277,17 @@ def get_drug_graph(drug_name: str):
         38,
         "center",
     ))
+    nodes[-1]["node_type"] = "Drug (Searched)"
+    nodes[-1]["rxcui"] = primary_rxcui
+    nodes[-1]["description"] = "Static center node. Always visible while filters show or hide surrounding category branches."
+    nodes[-1]["source"] = "RxNorm / RxNav"
 
     for hub_id, (label, group, title, x, y, outward_angle) in hubs.items():
-        nodes.append(_fixed_node(hub_id, label, group, title, x, y, 30, "hub"))
+        hub_node = _fixed_node(hub_id, label, group, title, x, y, 30, "hub")
+        hub_node["node_type"] = f"{label} Category Hub"
+        hub_node["description"] = title
+        hub_node["source"] = "RxNorm Intelligence Explorer"
+        nodes.append(hub_node)
         edges.append(_edge("drug_center", hub_id, "maps to", "Maps To", primary=True))
 
     # Drug-name details.
@@ -320,7 +303,7 @@ def get_drug_graph(drug_name: str):
         _radial_child_positions(
             hubs["drug_hub"][3],
             hubs["drug_hub"][4],
-            125,
+            detail_radius,
             hubs["drug_hub"][5],
             len(drug_details),
             120,
@@ -343,7 +326,7 @@ def get_drug_graph(drug_name: str):
         x, y = _radial_child_positions(
             hubs["rxcui_hub"][3],
             hubs["rxcui_hub"][4],
-            125,
+            detail_radius,
             hubs["rxcui_hub"][5],
             1,
         )[0]
@@ -365,7 +348,7 @@ def get_drug_graph(drug_name: str):
         _radial_child_positions(
             hubs["rxnorm_hub"][3],
             hubs["rxnorm_hub"][4],
-            125,
+            detail_radius,
             hubs["rxnorm_hub"][5],
             len(rxnorm_details),
             125,
@@ -374,13 +357,19 @@ def get_drug_graph(drug_name: str):
         node_id = f"rxnorm_detail_{i}"
         label = record.get("term_type", "RxNorm") or "RxNorm"
         relationship_type = record.get("term_type_description", "RxNorm concept")
+        # Clean RxNorm hover tooltip: remove repetitive headers such as
+        # "IN" + "RxNorm Relationship Type" and keep only the useful lines.
         title = _format_tooltip(
-            "RxNorm Relationship Type",
             relationship_type,
             record.get("term_type", ""),
             record.get("name", "")
         )
-        nodes.append(_detail_node(node_id, label, "rxnorm", title, x, y, 17))
+        rx_node = _detail_node(node_id, label, "rxnorm", title, x, y, 17)
+        rx_node["node_type"] = relationship_type
+        rx_node["description"] = record.get("name", "RxNorm semantic relationship")
+        rx_node["source"] = "RxNorm / RxNav"
+        rx_node["additional_context"] = _format_tooltip(record.get("term_type", ""), record.get("name", ""))
+        nodes.append(rx_node)
         edges.append(_edge("rxnorm_hub", node_id, "semantic relationship", relationship_type))
 
     # ATC hierarchy branch with click-to-expand levels.
@@ -395,15 +384,26 @@ def get_drug_graph(drug_name: str):
             ("Level 4", primary_atc.get("atc_level_4_code", ""), primary_atc.get("full_class_name", "Therapeutic class.")),
         ]
 
-        atc_x = hubs["atc_hub"][3] + 135
-        atc_start_y = hubs["atc_hub"][4] - 135
+        # Expanded ATC levels use their own evenly spaced outer arc/ring
+        # rather than a tight vertical stack. This keeps Level 1-4 readable.
+        atc_level_positions = _radial_child_positions(
+            hubs["atc_hub"][3],
+            hubs["atc_hub"][4],
+            170,
+            hubs["atc_hub"][5],
+            len([lvl for lvl in atc_levels if lvl[1]]),
+            95,
+        )
         previous_id = "atc_hub"
+        visible_level_index = 0
 
         for level_index, (level_name, code, description) in enumerate(atc_levels):
             if not code:
                 continue
 
             node_id = f"atc_level_{level_index + 1}"
+            x, y = atc_level_positions[visible_level_index]
+            visible_level_index += 1
             nodes.append(_fixed_node(
                 node_id=node_id,
                 label=code,
@@ -414,14 +414,18 @@ def get_drug_graph(drug_name: str):
                     description,
                     primary_atc.get("full_class_name", "")
                 ),
-                x=atc_x,
-                y=atc_start_y + (level_index * 80),
+                x=x,
+                y=y,
                 size=17,
                 role="atc_level",
             ))
             nodes[-1]["hidden"] = True
             nodes[-1]["atc_hierarchy_node"] = True
             nodes[-1]["atc_level_name"] = level_name
+            nodes[-1]["node_type"] = level_name
+            nodes[-1]["description"] = description
+            nodes[-1]["source"] = "RxClass / RxNav"
+            nodes[-1]["additional_context"] = primary_atc.get("full_class_name", "")
 
             edge_id = f"atc_hierarchy_edge_{level_index + 1}"
             branch_edge = _edge(previous_id, node_id, "ATC hierarchy", level_name, primary=False)
@@ -437,7 +441,7 @@ def get_drug_graph(drug_name: str):
             _radial_child_positions(
                 hubs["atc_hub"][3],
                 hubs["atc_hub"][4],
-                125,
+                detail_radius,
                 hubs["atc_hub"][5],
                 len(additional_atc),
                 115,
@@ -479,7 +483,7 @@ def get_drug_graph(drug_name: str):
         _radial_child_positions(
             hubs["ndc_hub"][3],
             hubs["ndc_hub"][4],
-            125,
+            detail_radius,
             hubs["ndc_hub"][5],
             len(ndc_details),
             120,
@@ -513,7 +517,7 @@ def get_drug_graph(drug_name: str):
         _radial_child_positions(
             hubs["analytics_hub"][3],
             hubs["analytics_hub"][4],
-            125,
+            detail_radius,
             hubs["analytics_hub"][5],
             len(analytics_details),
             115,
@@ -527,7 +531,7 @@ def get_drug_graph(drug_name: str):
 
     return {
         "drug_name": drug_name,
-        "layout": "static_center_clean_branch_layout",
+        "layout": "static_center_true_concentric_rings",
         "nodes": nodes,
         "edges": edges,
     }
