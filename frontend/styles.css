@@ -100,47 +100,42 @@
 }
 @media(max-width:900px){.graph-shell{min-height:480px}}
 
-/* Left graph guide: replaces category legend with relationship interaction key */
+/* Graph guide replaces the layer legend in the left sidebar */
 .graph-guide{
   background:rgba(15,23,42,.64);
   border:1px solid rgba(96,165,250,.2);
   border-radius:14px;
   padding:12px;
   display:grid;
-  gap:12px;
-  margin-top:20px;
+  gap:11px;
 }
-.guide-row{
+.graph-guide div{
   display:grid;
-  grid-template-columns:28px 1fr;
-  gap:10px;
+  grid-template-columns:34px 1fr;
   align-items:center;
   color:var(--muted);
-  font-size:12px;
   font-weight:700;
+  font-size:12px;
   line-height:1.35;
 }
 .guide-line{
-  display:block;
-  width:24px;
+  width:28px;
   height:0;
-  border-top:2px solid rgba(203,213,225,.75);
+  border-top:2px solid rgba(203,213,225,.82);
+  display:inline-block;
 }
-.guide-line.dashed{
+.related-line{
   border-top-style:dashed;
-  border-top-color:rgba(203,213,225,.68);
+  border-top-color:rgba(203,213,225,.62);
 }
 .guide-node-icon{
   width:18px;
   height:18px;
-  border:1.5px solid rgba(203,213,225,.85);
+  border:1.8px solid rgba(203,213,225,.9);
   border-radius:50%;
-  justify-self:center;
+  display:inline-block;
 }
-.guide-atc-icon{
-  width:20px;
-  height:20px;
-  border:1.5px dashed rgba(203,213,225,.85);
-  border-radius:6px;
-  justify-self:center;
+.atc-guide-icon{
+  border-style:dashed;
+  border-color:var(--orange);
 }

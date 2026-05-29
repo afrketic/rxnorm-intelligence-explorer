@@ -267,22 +267,8 @@ function applyGraphFilters() {
 }
 
 function applyAtcExpansionState(nodes, edges) {
-  const preparedNodes = (nodes || []).map((node) => {
-    const copy = { ...node };
-    if (copy.id === "atc_hub" && copy.expandable) {
-      copy.label = atcHierarchyExpanded ? copy.expanded_label || "ATC [-]" : copy.collapsed_label || "ATC [+]";
-    }
-    if (copy.atc_hierarchy_node) copy.hidden = !atcHierarchyExpanded;
-    return copy;
-  });
-
-  const preparedEdges = (edges || []).map((edge) => {
-    const copy = { ...edge };
-    if (copy.atc_hierarchy_edge) copy.hidden = !atcHierarchyExpanded;
-    return copy;
-  });
-
-  return { nodes: preparedNodes, edges: preparedEdges };
+  // ATC hierarchy is now shown inside ATC detail node metadata instead of separate expansion nodes.
+  return { nodes: nodes || [], edges: edges || [] };
 }
 
 function renderKnowledgeGraph(graphData) {
@@ -309,16 +295,24 @@ function renderKnowledgeGraph(graphData) {
 
   const prepared = applyAtcExpansionState(graphData.nodes || [], graphData.edges || []);
 
-  const graphNodes = prepared.nodes.map((node) => ({
-    ...node,
-    label: node.label || "",
-    font: {
-      color: "#f8fafc",
-      size: node.layout_role === "detail" ? 0 : 14,
-      face: "Arial",
-      vadjust: node.group === "searched_drug" ? 22 : 0
-    }
-  }));
+  const graphNodes = prepared.nodes.map((node) => {
+    const isMajor = node.layout_role === "center" || node.layout_role === "hub";
+    return {
+      ...node,
+      label: node.label || "",
+      shape: isMajor ? "circle" : "dot",
+      size: node.layout_role === "center" ? 46 : node.layout_role === "hub" ? 34 : node.size || 17,
+      chosen: false,
+      font: {
+        color: isMajor ? "#020617" : "#f8fafc",
+        size: node.layout_role === "detail" ? 0 : node.layout_role === "center" ? 14 : 13,
+        face: "Arial",
+        bold: isMajor,
+        align: "center",
+        vadjust: 0
+      }
+    };
+  });
 
   const graphEdges = prepared.edges.map((edge) => ({
     ...edge,
@@ -341,21 +335,33 @@ function renderKnowledgeGraph(graphData) {
     interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
     physics: { enabled: false },
     layout: { improvedLayout: false },
-    nodes: { borderWidth: 2, shadow: { enabled: true, color: "rgba(0,0,0,.45)", size: 12, x: 0, y: 4 } },
+    nodes: { borderWidth: 2, chosen: false, shadow: { enabled: true, color: "rgba(0,0,0,.45)", size: 12, x: 0, y: 4 } },
     edges: { selectionWidth: 3 }
   });
 
   activeNetwork.on("hoverNode", (params) => {
     const node = nodes.get(params.node);
     if (node && node.layout_role === "detail" && node.hover_label) {
-      nodes.update({ id: node.id, label: node.hover_label, font: { color: "#f8fafc", size: 13, face: "Arial" } });
+      nodes.update({
+        id: node.id,
+        label: node.hover_label,
+        size: node.size || 17,
+        chosen: false,
+        font: { color: "#f8fafc", size: 13, face: "Arial", align: "center" }
+      });
     }
   });
 
   activeNetwork.on("blurNode", (params) => {
     const node = nodes.get(params.node);
     if (node && node.layout_role === "detail") {
-      nodes.update({ id: node.id, label: "", font: { color: "#f8fafc", size: 0, face: "Arial" } });
+      nodes.update({
+        id: node.id,
+        label: "",
+        size: node.size || 17,
+        chosen: false,
+        font: { color: "#f8fafc", size: 0, face: "Arial", align: "center" }
+      });
     }
   });
 
@@ -363,10 +369,10 @@ function renderKnowledgeGraph(graphData) {
     if (params.nodes.length) {
       const id = params.nodes[0];
       const node = prepared.nodes.find((n) => n.id === id);
-      if (id === "atc_hub") {
+      if (id === "atc_hub" && node?.expandable) {
         atcHierarchyExpanded = !atcHierarchyExpanded;
         applyGraphFilters();
-        renderNodeInspector({ ...node, label: atcHierarchyExpanded ? "ATC [-]" : "ATC [+]" });
+        renderNodeInspector({ ...node, label: atcHierarchyExpanded ? node.expanded_label || "ATC [-]" : node.collapsed_label || "ATC [+]" });
         return;
       }
       renderNodeInspector(node);
