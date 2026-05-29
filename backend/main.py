@@ -53,7 +53,8 @@ def get_drug_graph(drug_name: str):
     edges.append({
         "from": "drug",
         "to": "rxcui",
-        "label": "standardized as"
+        "label": "standardized as",
+        "relationship_type": "Standardized As"
     })
 
     nodes.append({
@@ -66,7 +67,8 @@ def get_drug_graph(drug_name: str):
     edges.append({
         "from": "rxcui",
         "to": "rxnorm",
-        "label": "defines"
+        "label": "defines",
+        "relationship_type": "Defines"
     })
 
     for i, item in enumerate(therapeutic.get("atc_hierarchy", [])[:6]):
@@ -80,7 +82,8 @@ def get_drug_graph(drug_name: str):
         edges.append({
             "from": "rxnorm",
             "to": node_id,
-            "label": "classified into"
+            "label": "classified into",
+            "relationship_type": "Classified Into"
         })
 
     for i, item in enumerate(ndc.get("ndc_records", [])[:10]):
@@ -94,7 +97,8 @@ def get_drug_graph(drug_name: str):
         edges.append({
             "from": "rxnorm",
             "to": node_id,
-            "label": "maps to"
+            "label": "maps to",
+            "relationship_type": "Maps To"
         })
 
     nodes.append({
@@ -107,7 +111,8 @@ def get_drug_graph(drug_name: str):
     edges.append({
         "from": "rxcui",
         "to": "analytics",
-        "label": "enables"
+        "label": "enables",
+        "relationship_type": "Enables"
     })
 
     return {
