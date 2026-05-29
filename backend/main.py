@@ -318,7 +318,7 @@ def get_drug_graph(drug_name: str):
         )
     )):
         node_id = f"drug_detail_{i}"
-        nodes.append(_detail_node(
+        drug_node = _detail_node(
             node_id,
             record.get("name", "Drug Concept"),
             "drug",
@@ -326,7 +326,12 @@ def get_drug_graph(drug_name: str):
             x,
             y,
             17,
-        ))
+        )
+        drug_node["node_type"] = record.get("term_type_description", "Related Drug Concept")
+        drug_node["description"] = record.get("name", "Related drug concept")
+        drug_node["source"] = "RxNorm / RxNav"
+        drug_node["additional_context"] = _format_tooltip(record.get("term_type", ""), record.get("rxcui", ""))
+        nodes.append(drug_node)
         edges.append(_edge("drug_hub", node_id, "related concept", "Related Concept"))
 
     # RxCUI detail.
@@ -338,7 +343,7 @@ def get_drug_graph(drug_name: str):
             hubs["rxcui_hub"][5],
             1,
         )[0]
-        nodes.append(_detail_node(
+        rxcui_node = _detail_node(
             "rxcui_primary",
             primary_rxcui,
             "rxcui",
@@ -346,7 +351,12 @@ def get_drug_graph(drug_name: str):
             x,
             y,
             19,
-        ))
+        )
+        rxcui_node["node_type"] = "Primary RxCUI"
+        rxcui_node["rxcui"] = primary_rxcui
+        rxcui_node["description"] = "Primary RxNorm Concept Unique Identifier used as the normalized medication anchor."
+        rxcui_node["source"] = "RxNorm / RxNav"
+        nodes.append(rxcui_node)
         edges.append(_edge("rxcui_hub", "rxcui_primary", "resolves to", "Resolves To"))
 
     # RxNorm semantic relationship details.
@@ -443,7 +453,7 @@ def get_drug_graph(drug_name: str):
     )):
         node_id = f"ndc_detail_{i}"
         clinical_rxcui = record.get("clinical_drug_rxcui") or record.get("rxcui") or ""
-        nodes.append(_detail_node(
+        ndc_node = _detail_node(
             node_id,
             record.get("ndc11", "NDC"),
             "ndc",
@@ -455,7 +465,18 @@ def get_drug_graph(drug_name: str):
             x,
             y,
             16,
-        ))
+        )
+        ndc_node["node_type"] = "NDC Package / Claims Identifier"
+        ndc_node["rxcui"] = clinical_rxcui
+        ndc_node["description"] = record.get("ndc11", "NDC")
+        ndc_node["source"] = record.get("source", "RxNorm Related NDC")
+        ndc_node["additional_context"] = _format_tooltip(
+            "Package / claims-level identifier",
+            f"NDC10: {record.get('ndc10', '')}" if record.get("ndc10") else "",
+            f"NDC9: {record.get('ndc9', '')}" if record.get("ndc9") else "",
+            f"Clinical Drug RxCUI: {clinical_rxcui}" if clinical_rxcui else ""
+        )
+        nodes.append(ndc_node)
         edges.append(_edge("ndc_hub", node_id, "maps to", "Maps To"))
 
     # Analytics details.
@@ -476,7 +497,11 @@ def get_drug_graph(drug_name: str):
         )
     )):
         node_id = f"analytics_detail_{i}"
-        nodes.append(_detail_node(node_id, label, "analytics", title, x, y, 17))
+        analytics_node = _detail_node(node_id, label, "analytics", title, x, y, 17)
+        analytics_node["node_type"] = "Analytics Use Case"
+        analytics_node["description"] = title
+        analytics_node["source"] = "RxNorm Intelligence Explorer"
+        nodes.append(analytics_node)
         edges.append(_edge("analytics_hub", node_id, "enables", "Enables"))
 
     nodes, edges = _normalize_graph_payload(nodes, edges)

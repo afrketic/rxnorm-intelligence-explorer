@@ -332,12 +332,18 @@ function renderKnowledgeGraph(graphData) {
 
   activeNetwork = new vis.Network(container, { nodes, edges }, {
     groups: groupStyles,
-    interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
+    interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true, selectConnectedEdges: false },
     physics: { enabled: false },
     layout: { improvedLayout: false },
     nodes: { borderWidth: 2, chosen: false, shadow: { enabled: true, color: "rgba(0,0,0,.45)", size: 12, x: 0, y: 4 } },
-    edges: { selectionWidth: 3 }
+    edges: { selectionWidth: 1.5, chosen: false }
   });
+
+  setTimeout(() => {
+    if (activeNetwork) {
+      activeNetwork.fit({ animation: true });
+    }
+  }, 160);
 
   activeNetwork.on("hoverNode", (params) => {
     const node = nodes.get(params.node);
@@ -376,6 +382,9 @@ function renderKnowledgeGraph(graphData) {
         return;
       }
       renderNodeInspector(node);
+      setTimeout(() => {
+        if (activeNetwork) activeNetwork.unselectAll();
+      }, 0);
     } else {
       renderNodeInspector(null);
     }
