@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.rxnorm_client import get_full_application_payload
 import math
+import html
+import re
 
 app = FastAPI()
 
@@ -22,12 +24,53 @@ def get_drug_intelligence(drug_name: str):
     return get_full_application_payload(drug_name)
 
 
+def _clean_tooltip_text(value):
+    """
+    Normalizes all graph tooltip text globally.
+
+    This prevents raw HTML line-break strings such as <br> from appearing
+    inside hover popups and converts them into real newline-separated text.
+    Every node and edge title should pass through this function so future
+    drug searches inherit the same tooltip formatting automatically.
+    """
+    if value is None:
+        return ""
+
+    cleaned = html.unescape(str(value)).strip()
+    cleaned = re.sub(r"<\s*br\s*/?\s*>", "\n", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*\n\s*", "\n", cleaned)
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+
+    lines = [line.strip() for line in cleaned.split("\n") if line.strip()]
+    return "\n".join(lines)
+
+
+def _format_tooltip(*parts):
+    """
+    Builds a clean multiline tooltip from one or more pieces of information.
+
+    Example:
+    _format_tooltip("50090594900", "Package / claims-level identifier")
+    renders as:
+    50090594900
+    Package / claims-level identifier
+    """
+    lines = []
+
+    for part in parts:
+        cleaned = _clean_tooltip_text(part)
+        if cleaned:
+            lines.extend([line for line in cleaned.split("\n") if line.strip()])
+
+    return "\n".join(lines)
+
+
 def _fixed_node(node_id, label, group, title, x, y, size=24, role="detail"):
     return {
         "id": node_id,
         "label": label,
         "group": group,
-        "title": title,
+        "title": _format_tooltip(title),
         "x": x,
         "y": y,
         "fixed": {"x": True, "y": True},
@@ -48,10 +91,7 @@ def _detail_node(node_id, display_text, group, description, x, y, size=18):
     display_text = str(display_text or "").strip()
     description = str(description or "").strip()
 
-    if display_text and description:
-        title = f"{display_text}\n{description}"
-    else:
-        title = display_text or description or "Related detail"
+    title = _format_tooltip(display_text, description) or "Related detail"
 
     node = _fixed_node(
         node_id=node_id,
@@ -63,16 +103,18 @@ def _detail_node(node_id, display_text, group, description, x, y, size=18):
         size=size,
         role="detail",
     )
-    node["hover_label"] = display_text
+    node["hover_label"] = _format_tooltip(display_text)
     return node
 
 
 def _edge(source, target, label, relationship_type=None, primary=False):
-    relationship = relationship_type or label.title()
+    relationship = _format_tooltip(relationship_type or label.title())
+    clean_label = _format_tooltip(label)
     return {
         "from": source,
         "to": target,
-        "label": label,
+        "label": clean_label,
+        "title": _format_tooltip("Relationship Type:", relationship),
         "relationship_type": relationship,
         "show_label": False,
         "dashes": False if primary else [8, 7],
@@ -201,7 +243,10 @@ def get_drug_graph(drug_name: str):
     for i, (record, (x, y)) in enumerate(zip(rxnorm_details, _radial_child_positions(hubs["rxnorm_hub"][3], hubs["rxnorm_hub"][4], 125, hubs["rxnorm_hub"][5], len(rxnorm_details), 115))):
         node_id = f"rxnorm_detail_{i}"
         label = record.get("term_type", "RxNorm") or "RxNorm"
-        title = f"{record.get('term_type_description', 'RxNorm concept')} — {record.get('name', '')}".strip(" —")
+        title = _format_tooltip(
+            record.get('term_type_description', 'RxNorm concept'),
+            record.get('name', '')
+        )
         nodes.append(_detail_node(node_id, label, "rxnorm", title, x, y, 18))
         edges.append(_edge("rxnorm_hub", node_id, "semantic relationship", "Semantic Relationship"))
 
