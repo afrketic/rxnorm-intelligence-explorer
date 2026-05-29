@@ -243,13 +243,16 @@ def get_drug_graph(drug_name: str):
     # Fixed dashboard direction:
     # center searched drug is static -> evenly spaced category ring -> detail rings.
     center = (0, 0)
-    hub_radius = 315
-    detail_radius = 130
+    hub_radius = 325
+    detail_radius = 135
 
     # The category ring is intentionally equidistant: six semantic hubs spaced
     # every 60 degrees around the searched drug, similar to the SaaS circle
     # diagram direction. Positive Y renders downward in vis-network.
     hub_specs = [
+        # Six category hubs, exactly 60 degrees apart on the same category ring.
+        # This preserves the SaaS-style circular layout and removes uneven gaps
+        # between category clusters.
         ("atc_hub", "ATC", "atc", "Therapeutic class hierarchy used for clinical grouping.", 0),
         ("ndc_hub", "NDC", "ndc", "Claims-ready National Drug Code mappings. NDC package context is preserved in hover metadata without drawing noisy cross-link lines.", 60),
         ("analytics_hub", "Analytics", "analytics", "Downstream reporting, claims intelligence, and machine-learning use cases.", 120),
@@ -389,10 +392,10 @@ def get_drug_graph(drug_name: str):
         atc_level_positions = _radial_child_positions(
             hubs["atc_hub"][3],
             hubs["atc_hub"][4],
-            170,
+            235,
             hubs["atc_hub"][5],
             len([lvl for lvl in atc_levels if lvl[1]]),
-            95,
+            145,
         )
         previous_id = "atc_hub"
         visible_level_index = 0
@@ -441,10 +444,10 @@ def get_drug_graph(drug_name: str):
             _radial_child_positions(
                 hubs["atc_hub"][3],
                 hubs["atc_hub"][4],
-                detail_radius,
+                detail_radius + 25,
                 hubs["atc_hub"][5],
                 len(additional_atc),
-                115,
+                220,
             )
         )):
             node_id = f"atc_detail_{i}"
