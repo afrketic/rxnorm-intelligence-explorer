@@ -36,6 +36,35 @@ def _fixed_node(node_id, label, group, title, x, y, size=24, role="detail"):
     }
 
 
+def _detail_node(node_id, display_text, group, description, x, y, size=18):
+    """
+    Creates an outer-ring detail node with no persistent visible label.
+
+    The text is preserved in the hover tooltip so the graph stays clean while
+    still allowing users to inspect each outer detail circle on hover.
+    """
+    display_text = str(display_text or "").strip()
+    description = str(description or "").strip()
+
+    if display_text and description:
+        title = f"{display_text}<br>{description}"
+    else:
+        title = display_text or description or "Related detail"
+
+    node = _fixed_node(
+        node_id=node_id,
+        label="",
+        group=group,
+        title=title,
+        x=x,
+        y=y,
+        size=size,
+        role="detail",
+    )
+    node["hover_label"] = display_text
+    return node
+
+
 def _edge(source, target, label, relationship_type=None, primary=False):
     relationship = relationship_type or label.title()
     return {
@@ -142,12 +171,27 @@ def get_drug_graph(drug_name: str):
     drug_details = _unique_by_key(drug_candidates, "name", 3)
     for i, (record, (x, y)) in enumerate(zip(drug_details, _radial_child_positions(hubs["drug_hub"][3], hubs["drug_hub"][4], 125, hubs["drug_hub"][5], len(drug_details), 115))):
         node_id = f"drug_detail_{i}"
-        nodes.append(_fixed_node(node_id, record.get("name", "Drug Concept"), "drug", record.get("term_type_description", "Related drug concept"), x, y, 18, "detail"))
+        nodes.append(_detail_node(
+            node_id,
+            record.get("name", "Drug Concept"),
+            "drug",
+            record.get("term_type_description", "Related drug concept"),
+            x,
+            y,
+            18,
+        ))
         edges.append(_edge("drug_hub", node_id, "related concept", "Related Concept"))
 
     # RxCUI detail.
     if primary_rxcui:
-        nodes.append(_fixed_node("rxcui_primary", primary_rxcui, "rxcui", "Primary RxNorm Concept Unique Identifier.", *_radial_child_positions(hubs["rxcui_hub"][3], hubs["rxcui_hub"][4], 125, hubs["rxcui_hub"][5], 1)[0], 19, "detail"))
+        nodes.append(_detail_node(
+            "rxcui_primary",
+            primary_rxcui,
+            "rxcui",
+            "Primary RxNorm Concept Unique Identifier.",
+            *_radial_child_positions(hubs["rxcui_hub"][3], hubs["rxcui_hub"][4], 125, hubs["rxcui_hub"][5], 1)[0],
+            19,
+        ))
         edges.append(_edge("rxcui_hub", "rxcui_primary", "resolves to", "Resolves To"))
 
     # RxNorm semantic details.
@@ -156,21 +200,37 @@ def get_drug_graph(drug_name: str):
         node_id = f"rxnorm_detail_{i}"
         label = record.get("term_type", "RxNorm") or "RxNorm"
         title = f"{record.get('term_type_description', 'RxNorm concept')} — {record.get('name', '')}".strip(" —")
-        nodes.append(_fixed_node(node_id, label, "rxnorm", title, x, y, 18, "detail"))
+        nodes.append(_detail_node(node_id, label, "rxnorm", title, x, y, 18))
         edges.append(_edge("rxnorm_hub", node_id, "semantic relationship", "Semantic Relationship"))
 
     # ATC details positioned outside the ATC category hub, never near the center.
     atc_details = _unique_by_key(atc_records, "full_class_id", 5)
     for i, (record, (x, y)) in enumerate(zip(atc_details, _radial_child_positions(hubs["atc_hub"][3], hubs["atc_hub"][4], 125, hubs["atc_hub"][5], len(atc_details), 115))):
         node_id = f"atc_detail_{i}"
-        nodes.append(_fixed_node(node_id, record.get("full_class_id", "ATC"), "atc", record.get("full_class_name", "Therapeutic class"), x, y, 18, "detail"))
+        nodes.append(_detail_node(
+            node_id,
+            record.get("full_class_id", "ATC"),
+            "atc",
+            record.get("full_class_name", "Therapeutic class"),
+            x,
+            y,
+            18,
+        ))
         edges.append(_edge("atc_hub", node_id, "classified into", "Classified Into"))
 
     # NDC details.
     ndc_details = _unique_by_key(ndc_records, "ndc11", 6)
     for i, (record, (x, y)) in enumerate(zip(ndc_details, _radial_child_positions(hubs["ndc_hub"][3], hubs["ndc_hub"][4], 125, hubs["ndc_hub"][5], len(ndc_details), 115))):
         node_id = f"ndc_detail_{i}"
-        nodes.append(_fixed_node(node_id, record.get("ndc11", "NDC"), "ndc", "Package / claims-level identifier", x, y, 16, "detail"))
+        nodes.append(_detail_node(
+            node_id,
+            record.get("ndc11", "NDC"),
+            "ndc",
+            "Package / claims-level identifier",
+            x,
+            y,
+            16,
+        ))
         edges.append(_edge("ndc_hub", node_id, "maps to", "Maps To"))
 
     # Analytics details.
@@ -181,7 +241,7 @@ def get_drug_graph(drug_name: str):
     ]
     for i, ((label, title), (x, y)) in enumerate(zip(analytics_details, _radial_child_positions(hubs["analytics_hub"][3], hubs["analytics_hub"][4], 125, hubs["analytics_hub"][5], len(analytics_details), 115))):
         node_id = f"analytics_detail_{i}"
-        nodes.append(_fixed_node(node_id, label, "analytics", title, x, y, 17, "detail"))
+        nodes.append(_detail_node(node_id, label, "analytics", title, x, y, 17))
         edges.append(_edge("analytics_hub", node_id, "enables", "Enables"))
 
     return {
