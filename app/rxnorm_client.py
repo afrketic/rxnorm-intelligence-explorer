@@ -1464,6 +1464,144 @@ def get_full_application_payload(drug_name: str) -> Dict[str, Any]:
 
 
 
+
+# =========================================================
+# SEARCH AUTOCOMPLETE / TYPEAHEAD SUGGESTIONS
+# =========================================================
+
+def _extract_names_from_drugs_response(data: Optional[Dict[str, Any]]) -> List[str]:
+    """
+    Extracts displayable drug names from the RxNorm drugs.json response.
+    """
+    if not data:
+        return []
+
+    concept_groups = (
+        data
+        .get("drugGroup", {})
+        .get("conceptGroup", [])
+    )
+
+    if isinstance(concept_groups, dict):
+        concept_groups = [concept_groups]
+
+    names = []
+
+    for group in concept_groups:
+        concept_properties = group.get("conceptProperties", [])
+
+        if isinstance(concept_properties, dict):
+            concept_properties = [concept_properties]
+
+        for concept in concept_properties:
+            name = preserve_leading_zeros(concept.get("name", ""))
+            if name:
+                names.append(name)
+
+    return names
+
+
+def _dedupe_preserve_order(values: List[str]) -> List[str]:
+    """
+    Deduplicates suggestions while preserving the original ranking/order.
+    """
+    seen = set()
+    output = []
+
+    for value in values:
+        cleaned = preserve_leading_zeros(value)
+        key = cleaned.lower()
+
+        if cleaned and key not in seen:
+            seen.add(key)
+            output.append(cleaned)
+
+    return output
+
+
+def get_drug_name_suggestions(
+    query: str,
+    max_results: int = 8
+) -> Dict[str, Any]:
+    """
+    Frontend-ready autocomplete/typeahead service.
+
+    This uses RxNorm/RxNav while the user types so the dashboard can help
+    with spelling, brand names, generic names, and medication concept names.
+
+    Strategy:
+    1. Search RxNorm drugs.json using the current typed value.
+    2. Ask RxNorm for spelling suggestions when the typed value may be misspelled.
+    3. Expand spelling suggestions through drugs.json when possible.
+    4. Return a small deduplicated list suitable for a dropdown.
+    """
+    cleaned_query = preserve_leading_zeros(query).strip()
+
+    if len(cleaned_query) < 2:
+        return {
+            "success": True,
+            "query": cleaned_query,
+            "suggestions": [],
+            "suggestion_count": 0,
+            "message": "Enter at least 2 characters to retrieve suggestions.",
+            "source": "RxNorm / RxNav API"
+        }
+
+    try:
+        safe_max_results = max(1, min(int(max_results), 12))
+    except Exception:
+        safe_max_results = 8
+
+    suggestions = []
+
+    # Primary typeahead source: RxNorm drug name lookup.
+    drugs_data = adaptive_get_json(
+        "drugs.json",
+        params={"name": cleaned_query}
+    )
+    suggestions.extend(_extract_names_from_drugs_response(drugs_data))
+
+    # Spelling support: if the typed term is misspelled, RxNorm can suggest
+    # corrected medication terms. Those are then expanded through drugs.json.
+    spelling_data = adaptive_get_json(
+        "spellingsuggestions.json",
+        params={"name": cleaned_query}
+    )
+
+    spelling_values = (
+        spelling_data
+        .get("suggestionGroup", {})
+        .get("suggestionList", {})
+        .get("suggestion", [])
+    ) if spelling_data else []
+
+    if isinstance(spelling_values, str):
+        spelling_values = [spelling_values]
+
+    if isinstance(spelling_values, dict):
+        spelling_values = list(spelling_values.values())
+
+    for spelling in spelling_values[:3]:
+        spelling = preserve_leading_zeros(spelling)
+        if spelling:
+            suggestions.append(spelling)
+            expanded_data = adaptive_get_json(
+                "drugs.json",
+                params={"name": spelling}
+            )
+            suggestions.extend(_extract_names_from_drugs_response(expanded_data))
+
+    suggestions = _dedupe_preserve_order(suggestions)[:safe_max_results]
+
+    return {
+        "success": True,
+        "query": cleaned_query,
+        "suggestions": suggestions,
+        "suggestion_count": len(suggestions),
+        "source": "RxNorm / RxNav API"
+    }
+
+
 # =========================================================
 # TESTING / LOCAL EXECUTION
 # =========================================================

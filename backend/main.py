@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.rxnorm_client import get_full_application_payload
+from app.rxnorm_client import get_full_application_payload, get_drug_name_suggestions
 import math
 import html
 import re
@@ -22,6 +22,11 @@ def home():
 @app.get("/drug/{drug_name}")
 def get_drug_intelligence(drug_name: str):
     return get_full_application_payload(drug_name)
+
+
+@app.get("/suggest/{query}")
+def suggest_drug_names(query: str, max_results: int = 8):
+    return get_drug_name_suggestions(query, max_results=max_results)
 
 
 def _clean_tooltip_text(value):

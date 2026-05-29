@@ -25,7 +25,10 @@
       </div>
 
       <div class="search-row">
-        <input id="drugInput" type="text" placeholder="Enter a drug name — example: atorvastatin, Ozempic, Humira" />
+        <div class="autocomplete-wrap">
+          <input id="drugInput" type="text" placeholder="Enter a drug name — example: atorvastatin, Ozempic, Humira" autocomplete="off" aria-autocomplete="list" aria-controls="suggestionBox" />
+          <div id="suggestionBox" class="suggestion-box hidden" role="listbox" aria-label="Medication search suggestions"></div>
+        </div>
         <button id="searchButton">Explore Drug Intelligence</button>
       </div>
 
