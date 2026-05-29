@@ -293,42 +293,128 @@ def get_drug_graph(drug_name: str):
     for i, (record, (x, y)) in enumerate(zip(rxnorm_details, _radial_child_positions(hubs["rxnorm_hub"][3], hubs["rxnorm_hub"][4], 125, hubs["rxnorm_hub"][5], len(rxnorm_details), 115))):
         node_id = f"rxnorm_detail_{i}"
         label = record.get("term_type", "RxNorm") or "RxNorm"
+        relationship_type = record.get('term_type_description', 'RxNorm concept')
         title = _format_tooltip(
-            record.get('term_type_description', 'RxNorm concept'),
+            "RxNorm Relationship Type",
+            relationship_type,
+            record.get('term_type', ''),
             record.get('name', '')
         )
         nodes.append(_detail_node(node_id, label, "rxnorm", title, x, y, 18))
-        edges.append(_edge("rxnorm_hub", node_id, "semantic relationship", "Semantic Relationship"))
+        edges.append(_edge("rxnorm_hub", node_id, "semantic relationship", relationship_type))
 
-    # ATC details positioned outside the ATC category hub, never near the center.
+    # ATC hierarchy branch.
+    # The ATC hub now supports an expandable/collapsible hierarchy so the graph
+    # can show Level 1 -> Level 2 -> Level 3 -> Level 4 clinical context without
+    # cluttering the default collapsed view. The frontend toggles these nodes when
+    # the user clicks the ATC hub.
     atc_details = _unique_by_key(atc_records, "full_class_id", 5)
-    for i, (record, (x, y)) in enumerate(zip(atc_details, _radial_child_positions(hubs["atc_hub"][3], hubs["atc_hub"][4], 125, hubs["atc_hub"][5], len(atc_details), 115))):
-        node_id = f"atc_detail_{i}"
-        nodes.append(_detail_node(
-            node_id,
-            record.get("full_class_id", "ATC"),
-            "atc",
-            record.get("full_class_name", "Therapeutic class"),
-            x,
-            y,
-            18,
-        ))
-        edges.append(_edge("atc_hub", node_id, "classified into", "Classified Into"))
+    atc_hierarchy_node_ids = []
+    atc_hierarchy_edge_ids = []
+
+    if atc_details:
+        # Use the first ATC signal as the primary hierarchy branch. This mirrors
+        # the ATC Hierarchy panel while keeping the graph readable.
+        primary_atc = atc_details[0]
+        atc_levels = [
+            ("Level 1", primary_atc.get("atc_level_1_code", ""), "ATC anatomical main group."),
+            ("Level 2", primary_atc.get("atc_level_2_code", ""), "ATC therapeutic subgroup."),
+            ("Level 3", primary_atc.get("atc_level_3_code", ""), "ATC pharmacological subgroup."),
+            ("Level 4", primary_atc.get("atc_level_4_code", ""), primary_atc.get("full_class_name", "Therapeutic class.")),
+        ]
+
+        # Position expanded ATC levels as a clean vertical branch outside the ATC
+        # category hub. These are hidden by default and revealed by clicking ATC.
+        atc_x = hubs["atc_hub"][3] + 135
+        atc_start_y = hubs["atc_hub"][4] - 135
+        previous_id = "atc_hub"
+
+        for level_index, (level_name, code, description) in enumerate(atc_levels):
+            if not code:
+                continue
+
+            node_id = f"atc_level_{level_index + 1}"
+            atc_hierarchy_node_ids.append(node_id)
+            nodes.append(_fixed_node(
+                node_id=node_id,
+                label=code,
+                group="atc",
+                title=_format_tooltip(level_name, code, description, primary_atc.get("full_class_name", "")),
+                x=atc_x,
+                y=atc_start_y + (level_index * 80),
+                size=17,
+                role="atc_level",
+            ))
+            nodes[-1]["hidden"] = True
+            nodes[-1]["atc_hierarchy_node"] = True
+            nodes[-1]["atc_level_name"] = level_name
+
+            edge_id = f"atc_hierarchy_edge_{level_index + 1}"
+            atc_hierarchy_edge_ids.append(edge_id)
+            branch_edge = _edge(previous_id, node_id, "ATC hierarchy", level_name, primary=False)
+            branch_edge["id"] = edge_id
+            branch_edge["hidden"] = True
+            branch_edge["atc_hierarchy_edge"] = True
+            edges.append(branch_edge)
+            previous_id = node_id
+
+        # Additional ATC classes still appear as outer detail circles, but only
+        # on hover, preserving the clean visual design.
+        additional_atc = atc_details[1:] if len(atc_details) > 1 else []
+        for i, (record, (x, y)) in enumerate(zip(additional_atc, _radial_child_positions(hubs["atc_hub"][3], hubs["atc_hub"][4], 125, hubs["atc_hub"][5], len(additional_atc), 115))):
+            node_id = f"atc_detail_{i}"
+            nodes.append(_detail_node(
+                node_id,
+                record.get("full_class_id", "ATC"),
+                "atc",
+                _format_tooltip(
+                    "Additional ATC class",
+                    record.get("full_class_id", "ATC"),
+                    record.get("full_class_name", "Therapeutic class")
+                ),
+                x,
+                y,
+                18,
+            ))
+            edges.append(_edge("atc_hub", node_id, "classified into", "Classified Into"))
+
+    # Mark the ATC hub as expandable for the frontend.
+    for node in nodes:
+        if node.get("id") == "atc_hub":
+            node["title"] = _format_tooltip(
+                "ATC",
+                "Therapeutic class hierarchy used for clinical grouping.",
+                "Click to expand or collapse ATC Levels 1-4."
+            )
+            node["expandable"] = True
+            node["expanded_label"] = "ATC [-]"
+            node["collapsed_label"] = "ATC [+]"
+            node["label"] = "ATC [+]"
 
     # NDC details.
     ndc_details = _unique_by_key(ndc_records, "ndc11", 6)
     for i, (record, (x, y)) in enumerate(zip(ndc_details, _radial_child_positions(hubs["ndc_hub"][3], hubs["ndc_hub"][4], 125, hubs["ndc_hub"][5], len(ndc_details), 115))):
         node_id = f"ndc_detail_{i}"
+        clinical_rxcui = record.get("clinical_drug_rxcui") or record.get("rxcui") or ""
         nodes.append(_detail_node(
             node_id,
             record.get("ndc11", "NDC"),
             "ndc",
-            "Package / claims-level identifier",
+            _format_tooltip(
+                "Package / claims-level identifier",
+                f"Clinical Drug RxCUI: {clinical_rxcui}" if clinical_rxcui else ""
+            ),
             x,
             y,
             16,
         ))
         edges.append(_edge("ndc_hub", node_id, "maps to", "Maps To"))
+        if clinical_rxcui:
+            cross_edge = _edge(node_id, "rxnorm_hub", "package concept", "Cross-link to package / clinical drug concept")
+            cross_edge["dashes"] = [2, 8]
+            cross_edge["color"] = {"color": "rgba(148,163,184,.35)", "highlight": "#38bdf8"}
+            cross_edge["edge_role"] = "crosslink"
+            edges.append(cross_edge)
 
     # Analytics details.
     analytics_details = [
