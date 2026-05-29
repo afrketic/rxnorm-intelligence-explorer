@@ -200,3 +200,39 @@
 .suggestion-item:hover,.suggestion-item:focus{background:rgba(37,99,235,.22);outline:none;filter:none}
 .suggestion-empty{padding:13px 16px;color:var(--soft);font-size:13px}
 @media(max-width:900px){.autocomplete-wrap{width:100%;margin-bottom:12px}.suggestion-box{position:relative;top:8px}}
+
+
+/* =========================================================
+   Layer Filter Alignment Update
+   Creates fixed columns for checkbox, color dot, and label.
+   ========================================================= */
+.graph-controls .layer-row {
+  display: grid;
+  grid-template-columns: 28px 24px 1fr;
+  align-items: center;
+  column-gap: 14px;
+  width: 100%;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.graph-controls .layer-row input.layer-toggle {
+  justify-self: center;
+  margin: 0;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  flex: initial;
+}
+
+.graph-controls .layer-row .layer-dot {
+  justify-self: center;
+  margin: 0;
+}
+
+.graph-controls .layer-row .layer-label {
+  justify-self: start;
+  text-align: left;
+  line-height: 1.2;
+}

@@ -101,12 +101,36 @@
           <div class="graph-control-grid">
             <aside class="graph-controls">
               <div class="control-title">Layer Filters</div>
-              <label><input type="checkbox" class="layer-toggle" value="drug" checked /> <span class="layer-dot drug-dot"></span>Drug</label>
-              <label><input type="checkbox" class="layer-toggle" value="rxcui" checked /> <span class="layer-dot rxcui-dot"></span>RxCUI</label>
-              <label><input type="checkbox" class="layer-toggle" value="rxnorm" checked /> <span class="layer-dot rxnorm-dot"></span>RxNorm</label>
-              <label><input type="checkbox" class="layer-toggle" value="atc" checked /> <span class="layer-dot atc-dot"></span>ATC</label>
-              <label><input type="checkbox" class="layer-toggle" value="ndc" checked /> <span class="layer-dot ndc-dot"></span>NDC</label>
-              <label><input type="checkbox" class="layer-toggle" value="analytics" checked /> <span class="layer-dot analytics-dot"></span>Analytics</label>
+              <label class="layer-row">
+                <input type="checkbox" class="layer-toggle" value="drug" checked />
+                <span class="layer-dot drug-dot"></span>
+                <span class="layer-label">Drug</span>
+              </label>
+              <label class="layer-row">
+                <input type="checkbox" class="layer-toggle" value="rxcui" checked />
+                <span class="layer-dot rxcui-dot"></span>
+                <span class="layer-label">RxCUI</span>
+              </label>
+              <label class="layer-row">
+                <input type="checkbox" class="layer-toggle" value="rxnorm" checked />
+                <span class="layer-dot rxnorm-dot"></span>
+                <span class="layer-label">RxNorm</span>
+              </label>
+              <label class="layer-row">
+                <input type="checkbox" class="layer-toggle" value="atc" checked />
+                <span class="layer-dot atc-dot"></span>
+                <span class="layer-label">ATC</span>
+              </label>
+              <label class="layer-row">
+                <input type="checkbox" class="layer-toggle" value="ndc" checked />
+                <span class="layer-dot ndc-dot"></span>
+                <span class="layer-label">NDC</span>
+              </label>
+              <label class="layer-row">
+                <input type="checkbox" class="layer-toggle" value="analytics" checked />
+                <span class="layer-dot analytics-dot"></span>
+                <span class="layer-label">Analytics</span>
+              </label>
 
               <div class="control-title spacing">Graph Actions</div>
               <button id="fitGraphButton" class="secondary-btn full-btn">Fit Graph</button>
