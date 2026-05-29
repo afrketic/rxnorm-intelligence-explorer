@@ -62,18 +62,30 @@ def _unique_by_key(records, key_name, limit):
     return output
 
 
-def _child_positions(cx, cy, radius, start_deg, end_deg, count):
+def _radial_child_positions(cx, cy, radius, outward_deg, count, span_deg=120):
+    """
+    Places detail nodes evenly along the outer circumference of a category hub.
+
+    The category hubs sit on a ring around the searched medication. Each hub's
+    children are placed on the next outward ring, centered on that hub's radial
+    angle so detail nodes do not drift back toward the center or overlap the
+    hub-to-center relationship line.
+    """
     if count <= 0:
         return []
+
     if count == 1:
-        angles = [(start_deg + end_deg) / 2]
+        angles = [outward_deg]
     else:
-        step = (end_deg - start_deg) / (count - 1)
+        start_deg = outward_deg - (span_deg / 2)
+        step = span_deg / (count - 1)
         angles = [start_deg + i * step for i in range(count)]
+
     coords = []
     for angle in angles:
         radians = math.radians(angle)
         coords.append((round(cx + radius * math.cos(radians)), round(cy + radius * math.sin(radians))))
+
     return coords
 
 
@@ -100,18 +112,23 @@ def get_drug_graph(drug_name: str):
     # A fixed, standardized hub-and-spoke layout:
     # searched medication in the center -> semantic category hubs -> related detail nodes.
     center = (0, 0)
+    hub_radius = 300
+
+    # Hubs are intentionally placed on a clean 6-point ring around the searched drug.
+    # The final value in each tuple is the hub's outward radial angle. Child/detail
+    # nodes use that angle to form a second ring around the hub.
     hubs = {
-        "drug_hub": ("Drug", "drug", "Original medication search and related drug-name concepts.", -270, 0),
-        "rxnorm_hub": ("RxNorm", "rxnorm", "RxNorm semantic medication identity and related concept records.", -170, -205),
-        "rxcui_hub": ("RxCUI", "rxcui", "Standardized RxNorm Concept Unique Identifier.", 170, -205),
-        "atc_hub": ("ATC", "atc", "Therapeutic class hierarchy used for clinical grouping.", 270, 0),
-        "analytics_hub": ("Analytics", "analytics", "Downstream reporting, claims intelligence, and machine-learning use cases.", 170, 205),
-        "ndc_hub": ("NDC", "ndc", "Claims-ready National Drug Code mappings.", -170, 205),
+        "drug_hub": ("Drug", "drug", "Original medication search and related drug-name concepts.", -hub_radius, 0, 180),
+        "rxnorm_hub": ("RxNorm", "rxnorm", "RxNorm semantic medication identity and related concept records.", -150, -260, 240),
+        "rxcui_hub": ("RxCUI", "rxcui", "Standardized RxNorm Concept Unique Identifier.", 150, -260, 300),
+        "atc_hub": ("ATC", "atc", "Therapeutic class hierarchy used for clinical grouping.", hub_radius, 0, 0),
+        "analytics_hub": ("Analytics", "analytics", "Downstream reporting, claims intelligence, and machine-learning use cases.", 150, 260, 60),
+        "ndc_hub": ("NDC", "ndc", "Claims-ready National Drug Code mappings.", -150, 260, 120),
     }
 
     nodes.append(_fixed_node("drug_center", search_term, "drug", "Searched medication at the center of the knowledge graph.", center[0], center[1], 34, "center"))
 
-    for hub_id, (label, group, title, x, y) in hubs.items():
+    for hub_id, (label, group, title, x, y, outward_angle) in hubs.items():
         nodes.append(_fixed_node(hub_id, label, group, title, x, y, 30, "hub"))
         edges.append(_edge("drug_center", hub_id, "maps to", "Maps To", primary=True))
 
@@ -123,19 +140,19 @@ def get_drug_graph(drug_name: str):
         and str(r.get("name", "")).strip().lower() != search_term.lower()
     ]
     drug_details = _unique_by_key(drug_candidates, "name", 3)
-    for i, (record, (x, y)) in enumerate(zip(drug_details, _child_positions(-270, 0, 120, 145, 215, len(drug_details)))):
+    for i, (record, (x, y)) in enumerate(zip(drug_details, _radial_child_positions(hubs["drug_hub"][3], hubs["drug_hub"][4], 125, hubs["drug_hub"][5], len(drug_details), 115))):
         node_id = f"drug_detail_{i}"
         nodes.append(_fixed_node(node_id, record.get("name", "Drug Concept"), "drug", record.get("term_type_description", "Related drug concept"), x, y, 18, "detail"))
         edges.append(_edge("drug_hub", node_id, "related concept", "Related Concept"))
 
     # RxCUI detail.
     if primary_rxcui:
-        nodes.append(_fixed_node("rxcui_primary", primary_rxcui, "rxcui", "Primary RxNorm Concept Unique Identifier.", 245, -305, 19, "detail"))
+        nodes.append(_fixed_node("rxcui_primary", primary_rxcui, "rxcui", "Primary RxNorm Concept Unique Identifier.", *_radial_child_positions(hubs["rxcui_hub"][3], hubs["rxcui_hub"][4], 125, hubs["rxcui_hub"][5], 1)[0], 19, "detail"))
         edges.append(_edge("rxcui_hub", "rxcui_primary", "resolves to", "Resolves To"))
 
     # RxNorm semantic details.
     rxnorm_details = _unique_by_key(related_records, "term_type_description", 4)
-    for i, (record, (x, y)) in enumerate(zip(rxnorm_details, _child_positions(-170, -205, 115, 205, 335, len(rxnorm_details)))):
+    for i, (record, (x, y)) in enumerate(zip(rxnorm_details, _radial_child_positions(hubs["rxnorm_hub"][3], hubs["rxnorm_hub"][4], 125, hubs["rxnorm_hub"][5], len(rxnorm_details), 115))):
         node_id = f"rxnorm_detail_{i}"
         label = record.get("term_type", "RxNorm") or "RxNorm"
         title = f"{record.get('term_type_description', 'RxNorm concept')} — {record.get('name', '')}".strip(" —")
@@ -144,14 +161,14 @@ def get_drug_graph(drug_name: str):
 
     # ATC details positioned outside the ATC category hub, never near the center.
     atc_details = _unique_by_key(atc_records, "full_class_id", 5)
-    for i, (record, (x, y)) in enumerate(zip(atc_details, _child_positions(270, 0, 125, -50, 50, len(atc_details)))):
+    for i, (record, (x, y)) in enumerate(zip(atc_details, _radial_child_positions(hubs["atc_hub"][3], hubs["atc_hub"][4], 125, hubs["atc_hub"][5], len(atc_details), 115))):
         node_id = f"atc_detail_{i}"
         nodes.append(_fixed_node(node_id, record.get("full_class_id", "ATC"), "atc", record.get("full_class_name", "Therapeutic class"), x, y, 18, "detail"))
         edges.append(_edge("atc_hub", node_id, "classified into", "Classified Into"))
 
     # NDC details.
     ndc_details = _unique_by_key(ndc_records, "ndc11", 6)
-    for i, (record, (x, y)) in enumerate(zip(ndc_details, _child_positions(-170, 205, 125, 95, 205, len(ndc_details)))):
+    for i, (record, (x, y)) in enumerate(zip(ndc_details, _radial_child_positions(hubs["ndc_hub"][3], hubs["ndc_hub"][4], 125, hubs["ndc_hub"][5], len(ndc_details), 115))):
         node_id = f"ndc_detail_{i}"
         nodes.append(_fixed_node(node_id, record.get("ndc11", "NDC"), "ndc", "Package / claims-level identifier", x, y, 16, "detail"))
         edges.append(_edge("ndc_hub", node_id, "maps to", "Maps To"))
@@ -162,14 +179,14 @@ def get_drug_graph(drug_name: str):
         ("Utilization Analytics", "Supports utilization, trend, and therapeutic category analysis."),
         ("AI / ML Features", "Creates structured features for predictive modeling and AI-ready intelligence."),
     ]
-    for i, ((label, title), (x, y)) in enumerate(zip(analytics_details, _child_positions(170, 205, 120, 35, 95, len(analytics_details)))):
+    for i, ((label, title), (x, y)) in enumerate(zip(analytics_details, _radial_child_positions(hubs["analytics_hub"][3], hubs["analytics_hub"][4], 125, hubs["analytics_hub"][5], len(analytics_details), 115))):
         node_id = f"analytics_detail_{i}"
         nodes.append(_fixed_node(node_id, label, "analytics", title, x, y, 17, "detail"))
         edges.append(_edge("analytics_hub", node_id, "enables", "Enables"))
 
     return {
         "drug_name": drug_name,
-        "layout": "fixed_category_hub_spoke",
+        "layout": "fixed_concentric_category_rings",
         "nodes": nodes,
         "edges": edges,
     }
