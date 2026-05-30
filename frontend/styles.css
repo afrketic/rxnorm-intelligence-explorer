@@ -201,3 +201,78 @@
   .view-info-icon::after{right:auto!important;left:50%!important;transform:translateX(-50%)!important}
   .view-info-icon:hover::after,.view-info-icon:focus::after{transform:translateX(-50%) translateY(-2px)!important}
 }
+
+/* =========================================================
+   Alex Knows AI dashboard header refresh
+   ========================================================= */
+.app{max-width:1480px;padding:34px 28px 64px}
+.hero.app-header{
+  text-align:left;
+  margin:0 0 28px;
+  padding:20px 24px 28px;
+  border:1px solid rgba(96,165,250,.42);
+  border-radius:28px;
+  background:
+    radial-gradient(circle at 18% 8%,rgba(96,165,250,.16),transparent 28%),
+    linear-gradient(180deg,rgba(15,23,42,.68),rgba(2,6,23,.42));
+  box-shadow:0 24px 80px rgba(0,0,0,.34),0 0 38px rgba(37,99,235,.08);
+  backdrop-filter:blur(14px);
+}
+.brand-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  width:100%;
+}
+.brand-logo{
+  width:clamp(220px,18vw,260px);
+  height:auto;
+  display:block;
+  object-fit:contain;
+  filter:drop-shadow(0 16px 35px rgba(37,99,235,.22));
+}
+.hero-content{
+  max-width:980px;
+  margin:8px auto 0;
+  text-align:center;
+}
+.hero-content h1{
+  margin:6px 0 10px;
+  font-size:clamp(36px,4.8vw,58px);
+  letter-spacing:-.045em;
+}
+.hero-content .subtitle{
+  margin:0 auto 22px;
+  max-width:880px;
+  font-size:17px;
+  color:var(--muted);
+}
+.hero-search-row{
+  max-width:940px;
+  margin:0 auto;
+  align-items:center;
+}
+.hero-search-row input{
+  background:rgba(15,23,42,.88);
+  border-color:rgba(96,165,250,.24);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+.hero-search-row button{
+  min-width:118px;
+}
+.hero-content .examples{
+  justify-content:center;
+}
+.search-card{display:none}
+.status{margin:18px 0;color:#93c5fd;text-align:center}
+@media(max-width:900px){
+  .app{padding:24px 16px 46px}
+  .hero.app-header{padding:18px 16px 22px;border-radius:22px}
+  .brand-row{align-items:center}
+  .brand-logo{width:min(230px,68vw)}
+  .brand-row .status-pill{display:none}
+  .hero-content{margin-top:16px}
+  .hero-search-row{display:block}
+  .hero-search-row button{width:100%;margin-top:12px}
+}
