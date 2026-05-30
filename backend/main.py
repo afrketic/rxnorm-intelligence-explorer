@@ -2,9 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import math
 import html
+import os
 import re
+import time
+from copy import deepcopy
 
-from app.rxnorm_client import get_full_application_payload
+from app.rxnorm_client import (
+    get_full_application_payload,
+    get_therapeutic_class_explorer_package,
+    get_ndc_crosswalk,
+)
 
 try:
     from app.trending_drugs import get_trending_drugs
@@ -49,9 +56,225 @@ def home():
     return {"message": "RxNorm Intelligence Explorer API Running"}
 
 
+
+# =========================================================
+# LIGHTWEIGHT CACHE LAYER
+# =========================================================
+
+DRUG_PAYLOAD_CACHE_TTL_SECONDS = int(os.getenv("DRUG_PAYLOAD_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 7)))
+GRAPH_CACHE_TTL_SECONDS = int(os.getenv("GRAPH_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 7)))
+NDC_CACHE_TTL_SECONDS = int(os.getenv("NDC_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 7)))
+TRENDING_ENDPOINT_CACHE_TTL_SECONDS = int(os.getenv("TRENDING_ENDPOINT_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 30)))
+
+_CACHE = {
+    "drug": {},
+    "graph": {},
+    "ndc": {},
+    "trending": {},
+}
+
+
+def _cache_key(*parts):
+    return "::".join(str(part).strip().lower() for part in parts if part is not None)
+
+
+def _cache_get(bucket: str, key: str):
+    entry = _CACHE.get(bucket, {}).get(key)
+    if not entry:
+        return None
+
+    if time.time() >= entry.get("expires_at", 0):
+        _CACHE.get(bucket, {}).pop(key, None)
+        return None
+
+    payload = deepcopy(entry.get("payload"))
+    if isinstance(payload, dict):
+        payload["served_from_cache"] = True
+    return payload
+
+
+def _cache_set(bucket: str, key: str, payload, ttl_seconds: int):
+    _CACHE.setdefault(bucket, {})[key] = {
+        "expires_at": time.time() + ttl_seconds,
+        "payload": deepcopy(payload),
+    }
+    return payload
+
+
+def _build_light_application_payload(drug_name: str):
+    """
+    Builds the first-load dashboard payload without constructing the expensive
+    NDC crosswalk or graph payload. NDC and graph are lazy-loaded by their tabs.
+    """
+
+    package = get_therapeutic_class_explorer_package(drug_name)
+
+    if not package.get("success"):
+        return {
+            "app_name": "RxNorm Intelligence Explorer",
+            "subtitle": "Visualizing how medication data becomes standardized, interoperable, and AI-ready.",
+            "success": False,
+            "search": {
+                "success": False,
+                "search_term": drug_name,
+                "primary_rxcui": "",
+                "match_status": "Not Found",
+                "message": package.get("message", "Medication lookup failed."),
+                "source": "RxNorm / RxNav API",
+            },
+            "identity_card": {
+                "card_title": "Medication Identity",
+                "success": False,
+                "search_term": drug_name,
+                "primary_rxcui": "",
+                "concept_name": "",
+                "term_type": "",
+                "term_type_description": "",
+                "source": "RxNorm / RxNav API",
+            },
+            "related_concepts": {
+                "section_title": "Related RxNorm Concepts",
+                "success": False,
+                "search_term": drug_name,
+                "primary_rxcui": "",
+                "related_concepts_count": 0,
+                "related_concepts": [],
+                "grouped_related_concepts": {},
+                "source": "RxNorm / RxNav API",
+            },
+            "therapeutic_classes": {
+                "section_title": "Therapeutic Class Explorer",
+                "success": False,
+                "search_term": drug_name,
+                "primary_rxcui": "",
+                "rxclass_count": 0,
+                "atc_count": 0,
+                "rxclass_records": [],
+                "atc_records": [],
+                "atc_hierarchy": [],
+                "source": "RxClass / RxNav API",
+            },
+            "ndc_crosswalk": {
+                "section_title": "NDC Crosswalk Intelligence",
+                "success": False,
+                "lazy_loaded": False,
+                "ndc_count": None,
+                "summary": {},
+                "ndc_records": [],
+                "message": "NDC records load when the NDC Intelligence tab is opened.",
+            },
+        }
+
+    identity = package.get("identity", {})
+    therapeutic = package.get("therapeutic_class_explorer", {})
+
+    return {
+        "app_name": "RxNorm Intelligence Explorer",
+        "subtitle": "Visualizing how medication data becomes standardized, interoperable, and AI-ready.",
+        "success": True,
+        "lazy_payload": True,
+        "search": {
+            "success": identity.get("success", False),
+            "search_term": identity.get("search_term", drug_name),
+            "primary_rxcui": identity.get("primary_rxcui", ""),
+            "match_status": identity.get("match_status", ""),
+            "message": identity.get("message", ""),
+            "source": "RxNorm / RxNav API",
+        },
+        "identity_card": {
+            "card_title": "Medication Identity",
+            "success": identity.get("success", False),
+            "search_term": identity.get("search_term", drug_name),
+            "primary_rxcui": identity.get("primary_rxcui", ""),
+            "concept_name": identity.get("concept_name", ""),
+            "term_type": identity.get("term_type", ""),
+            "term_type_description": identity.get("term_type_description", ""),
+            "synonym": identity.get("synonym", ""),
+            "language": identity.get("language", ""),
+            "suppress": identity.get("suppress", ""),
+            "source_vocabulary": identity.get("source_vocabulary", "RXNORM"),
+            "source": identity.get("source", "RxNorm / RxNav API"),
+        },
+        "related_concepts": {
+            "section_title": "Related RxNorm Concepts",
+            "success": package.get("success", False),
+            "search_term": package.get("search_term", drug_name),
+            "primary_rxcui": package.get("primary_rxcui", ""),
+            "related_concepts_count": package.get("related_concepts_count", 0),
+            "related_concepts": package.get("related_concepts", []),
+            "grouped_related_concepts": package.get("grouped_related_concepts", {}),
+            "source": "RxNorm / RxNav API",
+        },
+        "therapeutic_classes": {
+            "section_title": "Therapeutic Class Explorer",
+            "success": therapeutic.get("success", False),
+            "search_term": package.get("search_term", drug_name),
+            "primary_rxcui": package.get("primary_rxcui", ""),
+            "rxclass_count": therapeutic.get("rxclass_count", 0),
+            "atc_count": therapeutic.get("atc_count", 0),
+            "rxclass_records": therapeutic.get("rxclass_records", []),
+            "atc_records": therapeutic.get("atc_records", []),
+            "atc_hierarchy": therapeutic.get("atc_hierarchy", []),
+            "source": therapeutic.get("source", "RxClass / RxNav API"),
+        },
+        "ndc_crosswalk": {
+            "section_title": "NDC Crosswalk Intelligence",
+            "success": False,
+            "lazy_loaded": False,
+            "ndc_count": None,
+            "summary": {},
+            "ndc_records": [],
+            "claims_intelligence_note": "NDC records load when the NDC Intelligence tab is opened.",
+            "source": "RxNorm / RxNav API",
+        },
+        "interoperability_graph": {
+            "lazy_loaded": False,
+            "message": "Graph payload loads when the Knowledge Graph tab is opened.",
+        },
+    }
+
+
+def _get_full_payload_cached(drug_name: str):
+    key = _cache_key("full", drug_name)
+    cached = _cache_get("drug", key)
+    if cached:
+        return cached
+    payload = get_full_application_payload(drug_name)
+    return _cache_set("drug", key, payload, DRUG_PAYLOAD_CACHE_TTL_SECONDS)
+
 @app.get("/drug/{drug_name}")
 def get_drug_intelligence(drug_name: str):
-    return get_full_application_payload(drug_name)
+    key = _cache_key("light", drug_name)
+    cached = _cache_get("drug", key)
+    if cached:
+        return cached
+
+    payload = _build_light_application_payload(drug_name)
+    return _cache_set("drug", key, payload, DRUG_PAYLOAD_CACHE_TTL_SECONDS)
+
+
+@app.get("/ndc/{drug_name}")
+def get_drug_ndc_intelligence(drug_name: str, limit: int = 50):
+    safe_limit = max(1, min(int(limit or 50), 250))
+    key = _cache_key("ndc", drug_name)
+    cached = _cache_get("ndc", key)
+
+    if cached:
+        cached["ndc_records"] = cached.get("ndc_records", [])[:safe_limit]
+        cached["render_limit"] = safe_limit
+        return cached
+
+    payload = get_ndc_crosswalk(drug_name)
+    payload["lazy_loaded"] = True
+    payload["render_limit"] = safe_limit
+    full_records = payload.get("ndc_records", []) or []
+    payload["ndc_count"] = payload.get("ndc_count", len(full_records))
+
+    cached_payload = deepcopy(payload)
+    _cache_set("ndc", key, cached_payload, NDC_CACHE_TTL_SECONDS)
+
+    payload["ndc_records"] = full_records[:safe_limit]
+    return payload
 
 
 @app.get("/suggest/{query}")
@@ -61,7 +284,14 @@ def suggest_drug_names(query: str, max_results: int = 8):
 
 @app.get("/trending-drugs")
 def trending_drugs(limit: int = 5):
-    return get_trending_drugs(limit=limit)
+    safe_limit = max(1, min(int(limit or 5), 10))
+    key = _cache_key("trending", safe_limit)
+    cached = _cache_get("trending", key)
+    if cached:
+        return cached
+
+    payload = get_trending_drugs(limit=safe_limit)
+    return _cache_set("trending", key, payload, TRENDING_ENDPOINT_CACHE_TTL_SECONDS)
 
 
 def _clean_tooltip_text(value):
@@ -89,7 +319,8 @@ def _format_tooltip(*parts):
         cleaned = _clean_tooltip_text(part)
         if cleaned:
             lines.extend([line for line in cleaned.split("\n") if line.strip()])
-    return "\n".join(lines)
+    compact = "\n".join(lines[:6])
+    return compact[:450]
 
 
 def _fixed_node(node_id, label, group, title, x, y, size=24, role="detail"):
@@ -250,8 +481,14 @@ def _normalize_graph_payload(nodes, edges):
 
 
 @app.get("/graph/{drug_name}")
-def get_drug_graph(drug_name: str):
-    payload = get_full_application_payload(drug_name)
+def get_drug_graph(drug_name: str, max_detail_nodes: int = 4):
+    safe_detail_limit = max(2, min(int(max_detail_nodes or 4), 8))
+    key = _cache_key("graph", drug_name, safe_detail_limit)
+    cached = _cache_get("graph", key)
+    if cached:
+        return cached
+
+    payload = _get_full_payload_cached(drug_name)
 
     identity = payload.get("identity_card", {})
     related = payload.get("related_concepts", {})
@@ -325,7 +562,7 @@ def get_drug_graph(drug_name: str):
         and str(r.get("name", "")).strip()
         and str(r.get("name", "")).strip().lower() != search_term.lower()
     ]
-    drug_details = _unique_by_key(drug_candidates, "name", 4)
+    drug_details = _unique_by_key(drug_candidates, "name", min(4, safe_detail_limit))
     for i, (record, (x, y)) in enumerate(zip(
         drug_details,
         _radial_child_positions(
@@ -380,7 +617,7 @@ def get_drug_graph(drug_name: str):
         edges.append(_edge("rxcui_hub", "rxcui_primary", "resolves to", "Resolves To"))
 
     # RxNorm semantic relationship details.
-    rxnorm_details = _unique_by_key(related_records, "term_type_description", 5)
+    rxnorm_details = _unique_by_key(related_records, "term_type_description", safe_detail_limit)
     for i, (record, (x, y)) in enumerate(zip(
         rxnorm_details,
         _radial_child_positions(
@@ -416,7 +653,7 @@ def get_drug_graph(drug_name: str):
     # Keep the graph to three visual rings: searched drug -> category hubs -> detail nodes.
     # ATC hierarchy context now lives inside the ATC detail node tooltip and Node Details panel
     # instead of rendering separate Level 1-4 circles.
-    atc_details = _unique_by_key(atc_records, "full_class_id", 6)
+    atc_details = _unique_by_key(atc_records, "full_class_id", safe_detail_limit)
 
     for i, (record, (x, y)) in enumerate(zip(
         atc_details,
@@ -459,7 +696,7 @@ def get_drug_graph(drug_name: str):
 
     # NDC package / claims details. Cross-link context is retained in hover metadata
     # instead of rendering additional long diagonal edges.
-    ndc_details = _unique_by_key(ndc_records, "ndc11", 6)
+    ndc_details = _unique_by_key(ndc_records, "ndc11", safe_detail_limit)
     for i, (record, (x, y)) in enumerate(zip(
         ndc_details,
         _radial_child_positions(
@@ -526,9 +763,12 @@ def get_drug_graph(drug_name: str):
 
     nodes, edges = _normalize_graph_payload(nodes, edges)
 
-    return {
+    graph_payload = {
         "drug_name": drug_name,
         "layout": "static_center_true_concentric_rings",
         "nodes": nodes,
         "edges": edges,
+        "max_detail_nodes": safe_detail_limit,
     }
+
+    return _cache_set("graph", key, graph_payload, GRAPH_CACHE_TTL_SECONDS)

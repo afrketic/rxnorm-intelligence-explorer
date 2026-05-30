@@ -17,6 +17,12 @@ let currentScoreBreakdowns = {};
 let activeIntelligenceView = null;
 let suggestionTimer = null;
 let suggestionAbortController = null;
+let currentDrugName = "";
+let graphLoadedForDrug = "";
+let graphLoading = false;
+let ndcLoadedForDrug = "";
+let ndcLoading = false;
+let activeDrugAbortController = null;
 
 const FALLBACK_POPULAR_DRUGS = [
   "Atorvastatin",
@@ -90,12 +96,20 @@ function bindPopularSearchButtons(scope = document) {
 bindPopularSearchButtons();
 
 document.querySelectorAll(".tab-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
     document.querySelectorAll(".tab-panel").forEach(panel => panel.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById(btn.dataset.tab).classList.add("active");
-    if (btn.dataset.tab === "graph" && activeNetwork) setTimeout(() => activeNetwork.fit(), 120);
+
+    if (btn.dataset.tab === "graph") {
+      await ensureGraphLoaded();
+      if (activeNetwork) setTimeout(() => activeNetwork.fit(), 120);
+    }
+
+    if (btn.dataset.tab === "ndc") {
+      await ensureNdcLoaded();
+    }
   });
 });
 
@@ -133,10 +147,12 @@ async function handleSuggestionInput() {
   const query = input.value.trim();
   if (suggestionTimer) clearTimeout(suggestionTimer);
   if (suggestionAbortController) suggestionAbortController.abort();
-  if (query.length < 2) {
+
+  if (query.length < 3) {
     hideSuggestions();
     return;
   }
+
   suggestionTimer = setTimeout(async () => {
     try {
       suggestionAbortController = new AbortController();
@@ -147,7 +163,7 @@ async function handleSuggestionInput() {
     } catch (error) {
       if (error.name !== "AbortError") hideSuggestions();
     }
-  }, 300);
+  }, 500);
 }
 
 function renderSuggestions(suggestions, query) {
@@ -237,23 +253,37 @@ async function fetchDrugIntelligence(drugName) {
     statusMessage.textContent = "Please enter a medication name.";
     return;
   }
+
+  if (activeDrugAbortController) activeDrugAbortController.abort();
+  activeDrugAbortController = new AbortController();
+
   setLoading(true);
   try {
-    const [payloadResponse, graphResponse] = await Promise.all([
-      fetch(`${API_BASE_URL}/drug/${encodeURIComponent(cleanDrugName)}`),
-      fetch(`${API_BASE_URL}/graph/${encodeURIComponent(cleanDrugName)}`)
-    ]);
+    const payloadResponse = await fetch(`${API_BASE_URL}/drug/${encodeURIComponent(cleanDrugName)}`, { signal: activeDrugAbortController.signal });
     if (!payloadResponse.ok) throw new Error(`Payload API error: ${payloadResponse.status}`);
-    if (!graphResponse.ok) throw new Error(`Graph API error: ${graphResponse.status}`);
+
     const data = await payloadResponse.json();
-    const graphData = await graphResponse.json();
+    currentDrugName = cleanDrugName;
     currentPayload = data;
-    fullGraphData = graphData;
+    fullGraphData = { nodes: [], edges: [] };
+    graphLoadedForDrug = "";
+    ndcLoadedForDrug = "";
+    graphLoading = false;
+    ndcLoading = false;
+
+    if (activeNetwork) {
+      activeNetwork.destroy();
+      activeNetwork = null;
+      activeNodes = null;
+      activeEdges = null;
+    }
+
     activeIntelligenceView = null;
     document.querySelectorAll(".intelligence-view-btn").forEach(btn => btn.classList.remove("active"));
-    renderResults(data, graphData);
-    statusMessage.textContent = "Medication intelligence loaded successfully.";
+    renderResults(data);
+    statusMessage.textContent = "Core medication intelligence loaded. Graph and full NDC records will load only when opened.";
   } catch (error) {
+    if (error.name === "AbortError") return;
     console.error(error);
     statusMessage.textContent = "Unable to retrieve medication intelligence. Confirm FastAPI is running on Render or locally.";
   } finally {
@@ -270,15 +300,15 @@ function setLoading(isLoading) {
   }
 }
 
-function renderResults(data, graphData) {
+function renderResults(data) {
   results.classList.remove("hidden");
   renderIdentityCard(data);
   renderSummaryMetrics(data);
-  renderKnowledgeGraph(graphData);
   renderPipeline(data);
   renderAtcExplorer(data);
   renderTherapeuticClasses(data);
-  renderNdcCrosswalk(data);
+  renderNdcPlaceholder();
+  renderGraphPlaceholder();
   renderBriefing(data);
   renderMedicationSummaryPanel(data);
 }
@@ -293,7 +323,8 @@ function renderIdentityCard(data) {
 function renderSummaryMetrics(data) {
   document.getElementById("relatedCount").textContent = data.related_concepts?.related_concepts_count || 0;
   document.getElementById("atcCount").textContent = data.therapeutic_classes?.atc_count || 0;
-  document.getElementById("ndcCount").textContent = data.ndc_crosswalk?.ndc_count || 0;
+  const ndcCount = data.ndc_crosswalk?.ndc_count;
+  document.getElementById("ndcCount").textContent = Number.isFinite(Number(ndcCount)) && Number(ndcCount) > 0 ? ndcCount : "Load";
 }
 
 function getSelectedLayers() {
@@ -303,6 +334,10 @@ function getSelectedLayers() {
 }
 
 function applyGraphFilters() {
+  if (!graphLoadedForDrug || !(fullGraphData.nodes || []).length) {
+    ensureGraphLoaded();
+    return;
+  }
   const selected = getSelectedLayers();
   const nodes = (fullGraphData.nodes || []).filter(node => node.group === "searched_drug" || selected.includes(node.group));
   const allowed = new Set(nodes.map(node => node.id));
@@ -396,7 +431,7 @@ function renderKnowledgeGraph(graphData) {
   activeEdges = new vis.DataSet(styledEdges);
 
   activeNetwork = new vis.Network(container, { nodes: activeNodes, edges: activeEdges }, {
-    interaction: { hover: true, tooltipDelay: 120, navigationButtons: true, keyboard: true },
+    interaction: { hover: true, tooltipDelay: 180, navigationButtons: false, keyboard: false },
     physics: { enabled: false },
     layout: { improvedLayout: false },
     nodes: {
@@ -426,7 +461,8 @@ function renderKnowledgeGraph(graphData) {
     }
   });
 
-  setTimeout(() => activeNetwork && activeNetwork.fit({ animation: { duration: 250, easingFunction: "easeInOutQuad" } }), 100);
+  activeNetwork.once("stabilizationIterationsDone", () => activeNetwork?.setOptions({ physics: false }));
+  setTimeout(() => activeNetwork && activeNetwork.fit({ animation: { duration: 180, easingFunction: "easeInOutQuad" } }), 80);
 }
 
 function calculateMedicationScores(data) {
@@ -691,6 +727,70 @@ function renderTherapeuticClasses(data) {
   });
 }
 
+function renderNdcPlaceholder() {
+  const container = document.getElementById("ndcList");
+  if (!container) return;
+  container.innerHTML = '<div class="list-item"><strong>NDC records are ready to lazy-load.</strong><div class="list-meta">Open the NDC Intelligence tab to load the first 50 claims-ready package identifiers.</div></div>';
+}
+
+function renderGraphPlaceholder() {
+  const container = document.getElementById("networkGraph");
+  if (!container) return;
+  container.innerHTML = '<div class="graph-lazy-placeholder"><strong>Knowledge graph not loaded yet.</strong><span>Open this tab to build the interactive graph on demand.</span></div>';
+}
+
+async function ensureGraphLoaded() {
+  if (!currentDrugName || graphLoading || graphLoadedForDrug === currentDrugName) return;
+
+  graphLoading = true;
+  const container = document.getElementById("networkGraph");
+  if (container) container.innerHTML = '<div class="graph-lazy-placeholder"><strong>Building graph...</strong><span>Loading semantic graph only for this active tab.</span></div>';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/graph/${encodeURIComponent(currentDrugName)}?max_detail_nodes=4`);
+    if (!response.ok) throw new Error(`Graph API error: ${response.status}`);
+    const graphData = await response.json();
+    fullGraphData = graphData;
+    graphLoadedForDrug = currentDrugName;
+    applyGraphFilters();
+    statusMessage.textContent = "Knowledge graph loaded on demand.";
+  } catch (error) {
+    console.error(error);
+    if (container) container.innerHTML = '<div class="graph-lazy-placeholder"><strong>Graph unavailable.</strong><span>Try again or confirm the backend graph endpoint is running.</span></div>';
+  } finally {
+    graphLoading = false;
+  }
+}
+
+async function ensureNdcLoaded() {
+  if (!currentDrugName || ndcLoading || ndcLoadedForDrug === currentDrugName) return;
+
+  ndcLoading = true;
+  const container = document.getElementById("ndcList");
+  if (container) container.innerHTML = '<div class="list-item"><strong>Loading NDC records...</strong><div class="list-meta">Fetching claims-ready identifiers only for this active tab.</div></div>';
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/ndc/${encodeURIComponent(currentDrugName)}?limit=50`);
+    if (!response.ok) throw new Error(`NDC API error: ${response.status}`);
+    const ndcPayload = await response.json();
+
+    if (currentPayload) {
+      currentPayload.ndc_crosswalk = ndcPayload;
+      ndcLoadedForDrug = currentDrugName;
+      renderSummaryMetrics(currentPayload);
+      renderNdcCrosswalk(currentPayload);
+      renderBriefing(currentPayload);
+      renderMedicationSummaryPanel(currentPayload);
+    }
+    statusMessage.textContent = "NDC intelligence loaded on demand.";
+  } catch (error) {
+    console.error(error);
+    if (container) container.innerHTML = '<div class="list-item"><strong>NDC records unavailable.</strong><div class="list-meta">Try again or confirm the backend NDC endpoint is running.</div></div>';
+  } finally {
+    ndcLoading = false;
+  }
+}
+
 function renderNdcCrosswalk(data) {
   const container = document.getElementById("ndcList");
   container.innerHTML = "";
@@ -699,7 +799,13 @@ function renderNdcCrosswalk(data) {
     container.innerHTML = '<div class="list-item">No NDC records returned.</div>';
     return;
   }
-  ndcItems.slice(0, 60).forEach((item, index) => {
+
+  const displayItems = ndcItems.slice(0, 50);
+  const totalCount = data.ndc_crosswalk?.ndc_count || ndcItems.length;
+
+  container.innerHTML = `<div class="list-item"><strong>Showing ${displayItems.length.toLocaleString()} of ${Number(totalCount).toLocaleString()} NDC records.</strong><div class="list-meta">Rendering is capped for dashboard performance. The backend can still retain the full payload in cache.</div></div>`;
+
+  displayItems.forEach((item, index) => {
     const div = document.createElement("div");
     div.className = "list-item";
     div.innerHTML = `<strong>${index + 1}. NDC11: ${escapeHtml(item.ndc11 || "N/A")}</strong><div class="list-meta">NDC10: ${escapeHtml(item.ndc10 || "N/A")} | NDC9: ${escapeHtml(item.ndc9 || "N/A")} | Clinical RxCUI: ${escapeHtml(item.clinical_drug_rxcui || item.rxcui || "N/A")}</div><div class="list-meta">Source: ${escapeHtml(item.source || "RxNorm Related NDC")}</div>`;
