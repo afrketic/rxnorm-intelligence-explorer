@@ -7,21 +7,6 @@ import re
 from app.rxnorm_client import get_full_application_payload
 
 try:
-    from app.trending_drugs import get_trending_drugs
-except ImportError:
-    def get_trending_drugs(limit: int = 5):
-        fallback = ["Atorvastatin", "Levothyroxine", "Metformin", "Lisinopril", "Amlodipine"]
-        return {
-            "success": False,
-            "used_fallback": True,
-            "display_label": "Popular Medication Searches",
-            "source": "Fallback list",
-            "metric": "Fallback",
-            "dataset_period": "Unavailable",
-            "trending_drugs": [{"rank": i + 1, "drug_name": name, "total_claim_count": None} for i, name in enumerate(fallback[:limit])]
-        }
-
-try:
     from app.rxnorm_client import get_drug_name_suggestions
 except ImportError:
     def get_drug_name_suggestions(query: str, max_results: int = 8):
@@ -57,11 +42,6 @@ def get_drug_intelligence(drug_name: str):
 @app.get("/suggest/{query}")
 def suggest_drug_names(query: str, max_results: int = 8):
     return get_drug_name_suggestions(query, max_results=max_results)
-
-
-@app.get("/trending-drugs")
-def trending_drugs(limit: int = 5):
-    return get_trending_drugs(limit=limit)
 
 
 def _clean_tooltip_text(value):

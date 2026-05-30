@@ -32,18 +32,10 @@
         <button id="searchButton">Explore Drug Intelligence</button>
       </div>
 
-      <div class="popular-searches" aria-label="Popular medication searches">
-        <div class="popular-searches-header">
-          <span>Popular Medication Searches</span>
-          <small id="popularSearchSource">CMS Medicare Part D claim volume</small>
-        </div>
-        <div id="popularSearchButtons" class="examples popular-search-buttons">
-          <button class="example-btn">Atorvastatin</button>
-          <button class="example-btn">Levothyroxine</button>
-          <button class="example-btn">Metformin</button>
-          <button class="example-btn">Lisinopril</button>
-          <button class="example-btn">Amlodipine</button>
-        </div>
+      <div class="examples">
+        <button class="example-btn">atorvastatin</button>
+        <button class="example-btn">Ozempic</button>
+        <button class="example-btn">Humira</button>
       </div>
     </section>
 
@@ -109,64 +101,18 @@
           <div class="graph-control-grid">
             <aside class="graph-controls">
               <div class="control-title">Layer Filters</div>
-              <label class="layer-row">
-                <input type="checkbox" class="layer-toggle" value="drug" checked />
-                <span class="layer-dot drug-dot"></span>
-                <span class="layer-label">Drug</span>
-              </label>
-              <label class="layer-row">
-                <input type="checkbox" class="layer-toggle" value="rxcui" checked />
-                <span class="layer-dot rxcui-dot"></span>
-                <span class="layer-label">RxCUI</span>
-              </label>
-              <label class="layer-row">
-                <input type="checkbox" class="layer-toggle" value="rxnorm" checked />
-                <span class="layer-dot rxnorm-dot"></span>
-                <span class="layer-label">RxNorm</span>
-              </label>
-              <label class="layer-row">
-                <input type="checkbox" class="layer-toggle" value="atc" checked />
-                <span class="layer-dot atc-dot"></span>
-                <span class="layer-label">ATC</span>
-              </label>
-              <label class="layer-row">
-                <input type="checkbox" class="layer-toggle" value="ndc" checked />
-                <span class="layer-dot ndc-dot"></span>
-                <span class="layer-label">NDC</span>
-              </label>
-              <label class="layer-row">
-                <input type="checkbox" class="layer-toggle" value="analytics" checked />
-                <span class="layer-dot analytics-dot"></span>
-                <span class="layer-label">Analytics</span>
-              </label>
+              <label><input type="checkbox" class="layer-toggle" value="drug" checked /> <span class="layer-dot drug-dot"></span>Drug</label>
+              <label><input type="checkbox" class="layer-toggle" value="rxcui" checked /> <span class="layer-dot rxcui-dot"></span>RxCUI</label>
+              <label><input type="checkbox" class="layer-toggle" value="rxnorm" checked /> <span class="layer-dot rxnorm-dot"></span>RxNorm</label>
+              <label><input type="checkbox" class="layer-toggle" value="atc" checked /> <span class="layer-dot atc-dot"></span>ATC</label>
+              <label><input type="checkbox" class="layer-toggle" value="ndc" checked /> <span class="layer-dot ndc-dot"></span>NDC</label>
+              <label><input type="checkbox" class="layer-toggle" value="analytics" checked /> <span class="layer-dot analytics-dot"></span>Analytics</label>
 
-              <div class="control-title spacing">Intelligence Views</div>
-              <div class="intelligence-view-list">
-                <button id="viewInteroperabilityButton" class="secondary-btn full-btn intelligence-view-btn" data-view="interoperability" type="button">
-                  <span>Interoperability View</span>
-                  <span class="info-icon view-info-icon" tabindex="0" aria-label="Interoperability View information">i</span>
-                </button>
-                <button id="viewClinicalButton" class="secondary-btn full-btn intelligence-view-btn" data-view="clinical" type="button">
-                  <span>Clinical View</span>
-                  <span class="info-icon view-info-icon" tabindex="0" aria-label="Clinical View information">i</span>
-                </button>
-                <button id="viewClaimsButton" class="secondary-btn full-btn intelligence-view-btn" data-view="claims" type="button">
-                  <span>Claims View</span>
-                  <span class="info-icon view-info-icon" tabindex="0" aria-label="Claims View information">i</span>
-                </button>
-                <button id="viewAiReadinessButton" class="secondary-btn full-btn intelligence-view-btn" data-view="aiReadiness" type="button">
-                  <span>AI Readiness View</span>
-                  <span class="info-icon view-info-icon" tabindex="0" aria-label="AI Readiness View information">i</span>
-                </button>
-              </div>
-
-              <div class="control-title spacing">Graph Guide</div>
-              <div class="graph-guide left-guide">
-                <div><span class="guide-line direct-line"></span>Direct Relationship</div>
-                <div><span class="guide-line related-line"></span>Related Relationship</div>
-                <div><span class="guide-node-icon"></span>Click node for details</div>
-                <div><span class="guide-node-icon atc-guide-icon"></span>Click ATC subnodes for hierarchy</div>
-              </div>
+              <div class="control-title spacing">Graph Actions</div>
+              <button id="fitGraphButton" class="secondary-btn full-btn">Fit Graph</button>
+              <button id="showAllGraphButton" class="secondary-btn full-btn">Show All Layers</button>
+              <button id="focusAtcButton" class="secondary-btn full-btn">Focus ATC</button>
+              <button id="focusNdcButton" class="secondary-btn full-btn">Focus NDC</button>
             </aside>
 
             <section class="graph-shell">
@@ -174,11 +120,28 @@
             </section>
 
             <aside class="node-inspector">
-              <div class="control-title">Node Details</div>
+              <div class="control-title">Node Inspector</div>
               <div id="nodeInspectorContent">
-                <p class="muted">Click a graph node to inspect its semantic layer, source, and interoperability context.</p>
+                <p class="muted">Click a graph node to inspect its semantic layer and interoperability meaning.</p>
               </div>
 
+              <div class="control-title spacing">Graph Metrics</div>
+              <div class="mini-metrics">
+                <div><span id="graphNodeCount">0</span><small>Nodes</small></div>
+                <div><span id="graphEdgeCount">0</span><small>Edges</small></div>
+                <div><span id="graphLayerCount">0</span><small>Layers</small></div>
+                <div><span id="graphDepthScore">0</span><small>Depth Score</small></div>
+              </div>
+
+              <div class="control-title spacing">Legend</div>
+              <div class="graph-legend">
+                <div><span class="layer-dot drug-dot"></span>Drug</div>
+                <div><span class="layer-dot rxcui-dot"></span>RxCUI</div>
+                <div><span class="layer-dot rxnorm-dot"></span>RxNorm</div>
+                <div><span class="layer-dot atc-dot"></span>ATC</div>
+                <div><span class="layer-dot ndc-dot"></span>NDC</div>
+                <div><span class="layer-dot analytics-dot"></span>Analytics</div>
+              </div>
             </aside>
           </div>
         </article>
@@ -268,6 +231,7 @@
       </section>
     </section>
   </main>
+
 
   <div id="scoreModal" class="score-modal hidden" role="dialog" aria-modal="true" aria-labelledby="scoreModalTitle">
     <div class="score-modal-content">

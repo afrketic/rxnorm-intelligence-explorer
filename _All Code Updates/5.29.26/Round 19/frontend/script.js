@@ -5,8 +5,6 @@ const button = document.getElementById("searchButton");
 const statusMessage = document.getElementById("statusMessage");
 const results = document.getElementById("results");
 const suggestionBox = document.getElementById("suggestionBox");
-const popularSearchButtons = document.getElementById("popularSearchButtons");
-const popularSearchSource = document.getElementById("popularSearchSource");
 
 let activeNetwork = null;
 let activeNodes = null;
@@ -17,14 +15,6 @@ let currentScoreBreakdowns = {};
 let activeIntelligenceView = null;
 let suggestionTimer = null;
 let suggestionAbortController = null;
-
-const FALLBACK_POPULAR_DRUGS = [
-  "Atorvastatin",
-  "Levothyroxine",
-  "Metformin",
-  "Lisinopril",
-  "Amlodipine"
-];
 
 const GROUP_STYLES = {
   searched_drug: { background: "#2563eb", border: "#bfdbfe", font: "#f8fafc", size: 38 },
@@ -76,18 +66,13 @@ document.addEventListener("click", event => {
   if (!event.target.closest(".autocomplete-wrap")) hideSuggestions();
 });
 
-function bindPopularSearchButtons(scope = document) {
-  scope.querySelectorAll(".example-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const drugName = btn.dataset.drugName || btn.textContent;
-      input.value = drugName;
-      hideSuggestions();
-      fetchDrugIntelligence(drugName);
-    });
+document.querySelectorAll(".example-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    input.value = btn.textContent;
+    hideSuggestions();
+    fetchDrugIntelligence(btn.textContent);
   });
-}
-
-bindPopularSearchButtons();
+});
 
 document.querySelectorAll(".tab-btn").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -178,51 +163,6 @@ function hideSuggestions() {
   if (suggestionBox) {
     suggestionBox.classList.add("hidden");
     suggestionBox.innerHTML = "";
-  }
-}
-
-function normalizeTrendingDrugName(item) {
-  if (typeof item === "string") return item;
-  if (!item || typeof item !== "object") return "";
-  return item.drug_name || item.generic_name || item.brand_name || item.name || "";
-}
-
-function renderPopularSearches(drugs, sourceLabel = "CMS Medicare Part D claim volume") {
-  if (!popularSearchButtons) return;
-
-  const names = (drugs || [])
-    .map(normalizeTrendingDrugName)
-    .map(value => String(value || "").trim())
-    .filter(Boolean)
-    .slice(0, 5);
-
-  const displayNames = names.length ? names : FALLBACK_POPULAR_DRUGS;
-
-  popularSearchButtons.innerHTML = displayNames
-    .map(name => `<button class="example-btn" type="button" data-drug-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`)
-    .join("");
-
-  if (popularSearchSource) popularSearchSource.textContent = sourceLabel;
-  bindPopularSearchButtons(popularSearchButtons);
-}
-
-async function loadPopularMedicationSearches() {
-  renderPopularSearches(FALLBACK_POPULAR_DRUGS, "Loading CMS Medicare Part D trends...");
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/trending-drugs?limit=5`);
-    if (!response.ok) throw new Error(`Trending drugs API error: ${response.status}`);
-
-    const payload = await response.json();
-    const drugs = payload.trending_drugs || payload.drugs || [];
-
-    const sourceLabel = payload.used_fallback
-      ? "Fallback list — CMS trends unavailable"
-      : `${payload.display_label || "Popular Medication Searches"} • ${payload.dataset_period || "latest CMS data"}`;
-
-    renderPopularSearches(drugs, sourceLabel);
-  } catch (error) {
-    renderPopularSearches(FALLBACK_POPULAR_DRUGS, "Fallback list — CMS trends unavailable");
   }
 }
 
@@ -760,5 +700,3 @@ function closeScoreModal() {
 document.getElementById("scoreModalClose")?.addEventListener("click", closeScoreModal);
 document.getElementById("scoreModal")?.addEventListener("click", event => { if (event.target.id === "scoreModal") closeScoreModal(); });
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeScoreModal(); });
-
-loadPopularMedicationSearches();

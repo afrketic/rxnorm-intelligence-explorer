@@ -9,40 +9,28 @@
 </head>
 <body>
   <main class="app">
-    <section class="hero">
-      <p class="eyebrow">AI - Alex Intelligence</p>
-      <h1>RxNorm Intelligence Explorer</h1>
-      <p class="subtitle">A medication interoperability workspace for RxNorm identity, ATC hierarchy, NDC claims mapping, and AI-ready analytics.</p>
-    </section>
-
-    <section class="search-card">
-      <div class="search-header">
-        <div>
-          <label for="drugInput">Search Medication</label>
-          <p>Explore standardized medication intelligence across RxCUI, RxNorm concepts, ATC classes, NDC identifiers, and claims-ready analytics.</p>
-        </div>
+    <section class="hero app-header">
+      <div class="brand-row">
+        <img class="brand-logo" src="branding image 1.png" alt="Alex Knows AI" />
         <span class="status-pill">Live RxNav API</span>
       </div>
 
-      <div class="search-row">
-        <div class="autocomplete-wrap">
-          <input id="drugInput" type="text" placeholder="Enter a drug name — example: atorvastatin, Ozempic, Humira" autocomplete="off" aria-autocomplete="list" aria-controls="suggestionBox" />
-          <div id="suggestionBox" class="suggestion-box hidden" role="listbox" aria-label="Medication search suggestions"></div>
-        </div>
-        <button id="searchButton">Explore Drug Intelligence</button>
-      </div>
+      <div class="hero-content">
+        <h1>RxNorm Intelligence Explorer</h1>
+        <p class="subtitle">Comprehensive medication intelligence powered by RxNorm, NDC, ATC, and real-world data insights.</p>
 
-      <div class="popular-searches" aria-label="Popular medication searches">
-        <div class="popular-searches-header">
-          <span>Popular Medication Searches</span>
-          <small id="popularSearchSource">CMS Medicare Part D claim volume</small>
+        <div class="search-row hero-search-row" aria-label="Medication search">
+          <div class="autocomplete-wrap">
+            <input id="drugInput" type="text" placeholder="Search medications by name, ingredient, RxCUI, NDC, or ATC code..." autocomplete="off" aria-autocomplete="list" aria-controls="suggestionBox" />
+            <div id="suggestionBox" class="suggestion-box hidden" role="listbox" aria-label="Medication search suggestions"></div>
+          </div>
+          <button id="searchButton">Search</button>
         </div>
-        <div id="popularSearchButtons" class="examples popular-search-buttons">
-          <button class="example-btn">Atorvastatin</button>
-          <button class="example-btn">Levothyroxine</button>
-          <button class="example-btn">Metformin</button>
-          <button class="example-btn">Lisinopril</button>
-          <button class="example-btn">Amlodipine</button>
+
+        <div class="examples">
+          <button class="example-btn">atorvastatin</button>
+          <button class="example-btn">Ozempic</button>
+          <button class="example-btn">Humira</button>
         </div>
       </div>
     </section>

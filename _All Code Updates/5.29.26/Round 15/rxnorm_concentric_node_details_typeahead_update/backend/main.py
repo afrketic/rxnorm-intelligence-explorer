@@ -7,21 +7,6 @@ import re
 from app.rxnorm_client import get_full_application_payload
 
 try:
-    from app.trending_drugs import get_trending_drugs
-except ImportError:
-    def get_trending_drugs(limit: int = 5):
-        fallback = ["Atorvastatin", "Levothyroxine", "Metformin", "Lisinopril", "Amlodipine"]
-        return {
-            "success": False,
-            "used_fallback": True,
-            "display_label": "Popular Medication Searches",
-            "source": "Fallback list",
-            "metric": "Fallback",
-            "dataset_period": "Unavailable",
-            "trending_drugs": [{"rank": i + 1, "drug_name": name, "total_claim_count": None} for i, name in enumerate(fallback[:limit])]
-        }
-
-try:
     from app.rxnorm_client import get_drug_name_suggestions
 except ImportError:
     def get_drug_name_suggestions(query: str, max_results: int = 8):
@@ -57,11 +42,6 @@ def get_drug_intelligence(drug_name: str):
 @app.get("/suggest/{query}")
 def suggest_drug_names(query: str, max_results: int = 8):
     return get_drug_name_suggestions(query, max_results=max_results)
-
-
-@app.get("/trending-drugs")
-def trending_drugs(limit: int = 5):
-    return get_trending_drugs(limit=limit)
 
 
 def _clean_tooltip_text(value):
@@ -191,14 +171,6 @@ def _point_on_circle(cx, cy, radius, angle_deg):
     )
 
 
-def _short_node_label(value, max_chars=16):
-    """Keeps visible circle labels compact while preserving full text in tooltips/details."""
-    value = str(value or "").strip()
-    if len(value) <= max_chars:
-        return value
-    return value[: max_chars - 1].rstrip() + "…"
-
-
 def _normalize_graph_payload(nodes, edges):
     """
     Final graph-wide formatting pass.
@@ -293,7 +265,7 @@ def get_drug_graph(drug_name: str):
 
     nodes.append(_fixed_node(
         "drug_center",
-        _short_node_label(search_term, 16),
+        search_term,
         "searched_drug",
         _format_tooltip(
             "Searched medication",
@@ -338,7 +310,7 @@ def get_drug_graph(drug_name: str):
         )
     )):
         node_id = f"drug_detail_{i}"
-        drug_node = _detail_node(
+        nodes.append(_detail_node(
             node_id,
             record.get("name", "Drug Concept"),
             "drug",
@@ -346,12 +318,7 @@ def get_drug_graph(drug_name: str):
             x,
             y,
             17,
-        )
-        drug_node["node_type"] = record.get("term_type_description", "Related Drug Concept")
-        drug_node["description"] = record.get("name", "Related drug concept")
-        drug_node["source"] = "RxNorm / RxNav"
-        drug_node["additional_context"] = _format_tooltip(record.get("term_type", ""), record.get("rxcui", ""))
-        nodes.append(drug_node)
+        ))
         edges.append(_edge("drug_hub", node_id, "related concept", "Related Concept"))
 
     # RxCUI detail.
@@ -363,7 +330,7 @@ def get_drug_graph(drug_name: str):
             hubs["rxcui_hub"][5],
             1,
         )[0]
-        rxcui_node = _detail_node(
+        nodes.append(_detail_node(
             "rxcui_primary",
             primary_rxcui,
             "rxcui",
@@ -371,12 +338,7 @@ def get_drug_graph(drug_name: str):
             x,
             y,
             19,
-        )
-        rxcui_node["node_type"] = "Primary RxCUI"
-        rxcui_node["rxcui"] = primary_rxcui
-        rxcui_node["description"] = "Primary RxNorm Concept Unique Identifier used as the normalized medication anchor."
-        rxcui_node["source"] = "RxNorm / RxNav"
-        nodes.append(rxcui_node)
+        ))
         edges.append(_edge("rxcui_hub", "rxcui_primary", "resolves to", "Resolves To"))
 
     # RxNorm semantic relationship details.
@@ -403,8 +365,6 @@ def get_drug_graph(drug_name: str):
             record.get("name", "")
         )
         rx_node = _detail_node(node_id, label, "rxnorm", title, x, y, 17)
-        # Override generic detail-node title so RxNorm tooltips do not repeat the code twice.
-        rx_node["title"] = title
         rx_node["node_type"] = relationship_type
         rx_node["description"] = record.get("name", "RxNorm semantic relationship")
         rx_node["source"] = "RxNorm / RxNav"
@@ -412,50 +372,108 @@ def get_drug_graph(drug_name: str):
         nodes.append(rx_node)
         edges.append(_edge("rxnorm_hub", node_id, "semantic relationship", relationship_type))
 
-    # ATC detail nodes.
-    # Keep the graph to three visual rings: searched drug -> category hubs -> detail nodes.
-    # ATC hierarchy context now lives inside the ATC detail node tooltip and Node Details panel
-    # instead of rendering separate Level 1-4 circles.
-    atc_details = _unique_by_key(atc_records, "full_class_id", 6)
+    # ATC hierarchy branch with click-to-expand levels.
+    atc_details = _unique_by_key(atc_records, "full_class_id", 5)
 
-    for i, (record, (x, y)) in enumerate(zip(
-        atc_details,
-        _radial_child_positions(
+    if atc_details:
+        primary_atc = atc_details[0]
+        atc_levels = [
+            ("Level 1", primary_atc.get("atc_level_1_code", ""), "ATC anatomical main group."),
+            ("Level 2", primary_atc.get("atc_level_2_code", ""), "ATC therapeutic subgroup."),
+            ("Level 3", primary_atc.get("atc_level_3_code", ""), "ATC pharmacological subgroup."),
+            ("Level 4", primary_atc.get("atc_level_4_code", ""), primary_atc.get("full_class_name", "Therapeutic class.")),
+        ]
+
+        # Expanded ATC levels use their own evenly spaced outer arc/ring
+        # rather than a tight vertical stack. This keeps Level 1-4 readable.
+        atc_level_positions = _radial_child_positions(
             hubs["atc_hub"][3],
             hubs["atc_hub"][4],
-            detail_radius,
+            170,
             hubs["atc_hub"][5],
-            len(atc_details),
-            125,
+            len([lvl for lvl in atc_levels if lvl[1]]),
+            95,
         )
-    )):
-        node_id = f"atc_detail_{i}"
-        full_code = record.get("full_class_id", "ATC") or "ATC"
-        full_name = record.get("full_class_name", "Therapeutic class") or "Therapeutic class"
-        hierarchy_lines = _format_tooltip(
-            f"{record.get('atc_level_1_code', '')} - ATC anatomical main group" if record.get("atc_level_1_code") else "",
-            f"{record.get('atc_level_2_code', '')} - ATC therapeutic subgroup" if record.get("atc_level_2_code") else "",
-            f"{record.get('atc_level_3_code', '')} - ATC pharmacological subgroup" if record.get("atc_level_3_code") else "",
-            f"{record.get('atc_level_4_code', '')} - {full_name}" if record.get("atc_level_4_code") else "",
-        )
-        atc_title = _format_tooltip(full_code, full_name, hierarchy_lines)
-        atc_node = _detail_node(
-            node_id,
-            full_code,
-            "atc",
-            atc_title,
-            x,
-            y,
-            17,
-        )
-        # Override the generic detail-node title so the code is not duplicated at the top.
-        atc_node["title"] = atc_title
-        atc_node["node_type"] = "ATC Therapeutic Class"
-        atc_node["description"] = _format_tooltip(full_code, full_name)
-        atc_node["source"] = "RxClass / RxNav"
-        atc_node["additional_context"] = hierarchy_lines
-        nodes.append(atc_node)
-        edges.append(_edge("atc_hub", node_id, "classified into", "Classified Into"))
+        previous_id = "atc_hub"
+        visible_level_index = 0
+
+        for level_index, (level_name, code, description) in enumerate(atc_levels):
+            if not code:
+                continue
+
+            node_id = f"atc_level_{level_index + 1}"
+            x, y = atc_level_positions[visible_level_index]
+            visible_level_index += 1
+            nodes.append(_fixed_node(
+                node_id=node_id,
+                label=code,
+                group="atc",
+                title=_format_tooltip(
+                    level_name,
+                    code,
+                    description,
+                    primary_atc.get("full_class_name", "")
+                ),
+                x=x,
+                y=y,
+                size=17,
+                role="atc_level",
+            ))
+            nodes[-1]["hidden"] = True
+            nodes[-1]["atc_hierarchy_node"] = True
+            nodes[-1]["atc_level_name"] = level_name
+            nodes[-1]["node_type"] = level_name
+            nodes[-1]["description"] = description
+            nodes[-1]["source"] = "RxClass / RxNav"
+            nodes[-1]["additional_context"] = primary_atc.get("full_class_name", "")
+
+            edge_id = f"atc_hierarchy_edge_{level_index + 1}"
+            branch_edge = _edge(previous_id, node_id, "ATC hierarchy", level_name, primary=False)
+            branch_edge["id"] = edge_id
+            branch_edge["hidden"] = True
+            branch_edge["atc_hierarchy_edge"] = True
+            edges.append(branch_edge)
+            previous_id = node_id
+
+        additional_atc = atc_details[1:] if len(atc_details) > 1 else []
+        for i, (record, (x, y)) in enumerate(zip(
+            additional_atc,
+            _radial_child_positions(
+                hubs["atc_hub"][3],
+                hubs["atc_hub"][4],
+                detail_radius,
+                hubs["atc_hub"][5],
+                len(additional_atc),
+                115,
+            )
+        )):
+            node_id = f"atc_detail_{i}"
+            nodes.append(_detail_node(
+                node_id,
+                record.get("full_class_id", "ATC"),
+                "atc",
+                _format_tooltip(
+                    "Additional ATC class",
+                    record.get("full_class_id", "ATC"),
+                    record.get("full_class_name", "Therapeutic class")
+                ),
+                x,
+                y,
+                17,
+            ))
+            edges.append(_edge("atc_hub", node_id, "classified into", "Classified Into"))
+
+    for node in nodes:
+        if node.get("id") == "atc_hub":
+            node["title"] = _format_tooltip(
+                "ATC",
+                "Therapeutic class hierarchy used for clinical grouping.",
+                "Click to expand or collapse ATC Levels 1-4."
+            )
+            node["expandable"] = True
+            node["expanded_label"] = "ATC [-]"
+            node["collapsed_label"] = "ATC [+]"
+            node["label"] = "ATC [+]"
 
     # NDC package / claims details. Cross-link context is retained in hover metadata
     # instead of rendering additional long diagonal edges.
@@ -473,7 +491,7 @@ def get_drug_graph(drug_name: str):
     )):
         node_id = f"ndc_detail_{i}"
         clinical_rxcui = record.get("clinical_drug_rxcui") or record.get("rxcui") or ""
-        ndc_node = _detail_node(
+        nodes.append(_detail_node(
             node_id,
             record.get("ndc11", "NDC"),
             "ndc",
@@ -485,18 +503,7 @@ def get_drug_graph(drug_name: str):
             x,
             y,
             16,
-        )
-        ndc_node["node_type"] = "NDC Package / Claims Identifier"
-        ndc_node["rxcui"] = clinical_rxcui
-        ndc_node["description"] = record.get("ndc11", "NDC")
-        ndc_node["source"] = record.get("source", "RxNorm Related NDC")
-        ndc_node["additional_context"] = _format_tooltip(
-            "Package / claims-level identifier",
-            f"NDC10: {record.get('ndc10', '')}" if record.get("ndc10") else "",
-            f"NDC9: {record.get('ndc9', '')}" if record.get("ndc9") else "",
-            f"Clinical Drug RxCUI: {clinical_rxcui}" if clinical_rxcui else ""
-        )
-        nodes.append(ndc_node)
+        ))
         edges.append(_edge("ndc_hub", node_id, "maps to", "Maps To"))
 
     # Analytics details.
@@ -517,11 +524,7 @@ def get_drug_graph(drug_name: str):
         )
     )):
         node_id = f"analytics_detail_{i}"
-        analytics_node = _detail_node(node_id, label, "analytics", title, x, y, 17)
-        analytics_node["node_type"] = "Analytics Use Case"
-        analytics_node["description"] = title
-        analytics_node["source"] = "RxNorm Intelligence Explorer"
-        nodes.append(analytics_node)
+        nodes.append(_detail_node(node_id, label, "analytics", title, x, y, 17))
         edges.append(_edge("analytics_hub", node_id, "enables", "Enables"))
 
     nodes, edges = _normalize_graph_payload(nodes, edges)
