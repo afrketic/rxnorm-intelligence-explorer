@@ -271,6 +271,143 @@ def trending_drugs(limit: int = 5):
     )
 
 
+# =========================================================
+# MONTHLY CACHE PREWARM ENDPOINT
+# =========================================================
+
+PREWARM_DEFAULT_DRUGS = [
+    "Atorvastatin",
+    "Levothyroxine",
+    "Metformin",
+    "Lisinopril",
+    "Amlodipine",
+    "Semaglutide",
+    "Ozempic",
+    "Humira",
+    "Eliquis",
+]
+
+
+def _prewarm_one_drug(drug_name: str, ndc_limit: int = 50, max_detail_nodes: int = 4):
+    """
+    Builds the monthly cache entries for one medication.
+
+    This intentionally calls the public endpoint handlers so the same cache
+    keys, monthly cache cycle, lazy-loading behavior, and stale-fallback logic
+    are used by normal dashboard traffic and scheduled prewarming.
+    """
+
+    result = {
+        "drug_name": drug_name,
+        "drug_payload": "not_started",
+        "ndc_payload": "not_started",
+        "graph_payload": "not_started",
+        "errors": [],
+    }
+
+    try:
+        get_drug_intelligence(drug_name)
+        result["drug_payload"] = "warmed"
+    except Exception as exc:
+        result["drug_payload"] = "failed"
+        result["errors"].append(f"drug_payload: {exc}")
+
+    try:
+        get_drug_ndc_intelligence(drug_name, limit=ndc_limit)
+        result["ndc_payload"] = "warmed"
+    except Exception as exc:
+        result["ndc_payload"] = "failed"
+        result["errors"].append(f"ndc_payload: {exc}")
+
+    try:
+        get_drug_graph(drug_name, max_detail_nodes=max_detail_nodes)
+        result["graph_payload"] = "warmed"
+    except Exception as exc:
+        result["graph_payload"] = "failed"
+        result["errors"].append(f"graph_payload: {exc}")
+
+    result["success"] = len(result["errors"]) == 0
+    return result
+
+
+@app.post("/cache/prewarm")
+def prewarm_cache(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4):
+    """
+    Monthly cache prewarm endpoint for Render Cron Jobs.
+
+    Intended cron command:
+    curl -X POST https://<render-backend-url>/cache/prewarm
+
+    What it warms:
+    - CMS Part D popular medication searches
+    - Light dashboard drug payloads
+    - Lazy NDC payloads
+    - Lazy graph payloads
+
+    Cache cycle policy:
+    - Refresh day is the 15th of each month.
+    - Before the 15th, the active cache cycle remains the prior month.
+    - On/after the 15th, this endpoint rebuilds missing/stale current-cycle caches.
+    """
+
+    safe_limit = max(1, min(int(limit or 5), 10))
+    safe_ndc_limit = max(1, min(int(ndc_limit or 50), 250))
+    safe_detail_limit = max(2, min(int(max_detail_nodes or 4), 8))
+    cache_cycle = _monthly_cache_metadata()
+
+    trending_result = None
+    trending_drug_names = []
+    errors = []
+
+    try:
+        trending_result = trending_drugs(limit=safe_limit)
+        for item in trending_result.get("trending_drugs", []) or []:
+            drug_name = str(item.get("drug_name", "")).strip()
+            if drug_name:
+                trending_drug_names.append(drug_name)
+    except Exception as exc:
+        errors.append(f"trending_drugs: {exc}")
+
+    # Always include fallback/strategic drugs so the dashboard's most common
+    # entry points are warm even when CMS is unavailable or returns sparse data.
+    prewarm_drugs = []
+    seen = set()
+
+    for name in trending_drug_names + PREWARM_DEFAULT_DRUGS:
+        cleaned = str(name or "").strip()
+        key = cleaned.lower()
+        if cleaned and key not in seen:
+            seen.add(key)
+            prewarm_drugs.append(cleaned)
+
+    drug_results = [
+        _prewarm_one_drug(
+            drug_name=name,
+            ndc_limit=safe_ndc_limit,
+            max_detail_nodes=safe_detail_limit,
+        )
+        for name in prewarm_drugs
+    ]
+
+    warmed_successfully = sum(1 for item in drug_results if item.get("success"))
+    failed = [item for item in drug_results if not item.get("success")]
+
+    return {
+        "success": len(errors) == 0 and len(failed) == 0,
+        "status": "completed",
+        "message": "Monthly cache prewarm completed.",
+        "cache_policy": cache_cycle,
+        "refresh_day": MONTHLY_CACHE_REFRESH_DAY,
+        "trending_source_status": "warmed" if trending_result else "failed",
+        "trending_result": trending_result,
+        "drugs_requested": len(prewarm_drugs),
+        "drugs_warmed_successfully": warmed_successfully,
+        "drugs_failed": len(failed),
+        "drug_results": drug_results,
+        "errors": errors,
+    }
+
+
 def _clean_tooltip_text(value):
     """
     Normalizes all graph tooltip text globally.
