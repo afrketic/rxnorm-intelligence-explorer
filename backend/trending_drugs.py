@@ -11,7 +11,8 @@ Primary source:
 
 Design:
 - Uses CMS data when available
-- Caches results for roughly one month
+- Monthly persistent caching is handled by backend/cache_manager.py
+- Optional in-process memory cache remains available for local/dev use
 - Falls back to a stable high-volume medication list if CMS is unavailable
 ---------------------------------------------------------
 """
@@ -214,7 +215,7 @@ def _fallback_payload(limit: int, reason: str) -> Dict[str, Any]:
     }
 
 
-def get_trending_drugs(limit: int = 5) -> Dict[str, Any]:
+def get_trending_drugs(limit: int = 5, use_memory_cache: bool = True) -> Dict[str, Any]:
     """
     Returns the top popular medication search buttons for the dashboard.
 
@@ -227,7 +228,7 @@ def get_trending_drugs(limit: int = 5) -> Dict[str, Any]:
     now = time.time()
 
     cached_payload = _CACHE.get("payload")
-    if cached_payload and now < _CACHE.get("expires_at", 0):
+    if use_memory_cache and cached_payload and now < _CACHE.get("expires_at", 0):
         payload = dict(cached_payload)
         payload["trending_drugs"] = payload.get("trending_drugs", [])[:safe_limit]
         payload["served_from_cache"] = True
@@ -257,8 +258,9 @@ def get_trending_drugs(limit: int = 5) -> Dict[str, Any]:
             "trending_drugs": ranked_drugs,
         }
 
-        _CACHE["payload"] = payload
-        _CACHE["expires_at"] = now + CACHE_TTL_SECONDS
+        if use_memory_cache:
+            _CACHE["payload"] = payload
+            _CACHE["expires_at"] = now + CACHE_TTL_SECONDS
 
         return payload
 
