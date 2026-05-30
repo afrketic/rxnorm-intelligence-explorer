@@ -33,11 +33,12 @@ from typing import Any, Callable, Dict, Optional
 
 DEFAULT_REFRESH_DAY = int(os.getenv("MONTHLY_CACHE_REFRESH_DAY", "15"))
 BASE_CACHE_DIR = Path(
-    os.getenv("RXNORM_CACHE_DIR")
-    or os.getenv("RENDER_DISK_CACHE_DIR")
-    or os.getenv("PERSISTENT_CACHE_DIR")
-    or (Path(__file__).resolve().parent / "cache")
+    os.getenv(
+        "RXNORM_CACHE_DIR",
+        "/var/data/rxnorm_cache"
+    )
 )
+BASE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 CACHE_FOLDERS = {
     "drug_payloads": BASE_CACHE_DIR / "drug_payloads",
