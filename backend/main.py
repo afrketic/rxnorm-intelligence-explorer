@@ -2,9 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import math
 import html
-import os
 import re
-import time
 from copy import deepcopy
 
 from app.rxnorm_client import (
@@ -12,6 +10,12 @@ from app.rxnorm_client import (
     get_therapeutic_class_explorer_package,
     get_ndc_crosswalk,
 )
+
+
+try:
+    from backend.cache_manager import get_cached_or_build, calculate_current_cache_cycle
+except ImportError:
+    from cache_manager import get_cached_or_build, calculate_current_cache_cycle
 
 try:
     from app.trending_drugs import get_trending_drugs
@@ -58,53 +62,26 @@ def home():
 
 
 # =========================================================
-# LIGHTWEIGHT CACHE LAYER
+# MONTHLY CACHE LAYER
 # =========================================================
 
-DRUG_PAYLOAD_CACHE_TTL_SECONDS = int(os.getenv("DRUG_PAYLOAD_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 7)))
-GRAPH_CACHE_TTL_SECONDS = int(os.getenv("GRAPH_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 7)))
-NDC_CACHE_TTL_SECONDS = int(os.getenv("NDC_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 7)))
-TRENDING_ENDPOINT_CACHE_TTL_SECONDS = int(os.getenv("TRENDING_ENDPOINT_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 30)))
-
-_CACHE = {
-    "drug": {},
-    "graph": {},
-    "ndc": {},
-    "trending": {},
-}
+MONTHLY_CACHE_REFRESH_DAY = 15
 
 
 def _cache_key(*parts):
     return "::".join(str(part).strip().lower() for part in parts if part is not None)
 
 
-def _cache_get(bucket: str, key: str):
-    entry = _CACHE.get(bucket, {}).get(key)
-    if not entry:
-        return None
-
-    if time.time() >= entry.get("expires_at", 0):
-        _CACHE.get(bucket, {}).pop(key, None)
-        return None
-
-    payload = deepcopy(entry.get("payload"))
-    if isinstance(payload, dict):
-        payload["served_from_cache"] = True
-    return payload
-
-
-def _cache_set(bucket: str, key: str, payload, ttl_seconds: int):
-    _CACHE.setdefault(bucket, {})[key] = {
-        "expires_at": time.time() + ttl_seconds,
-        "payload": deepcopy(payload),
-    }
-    return payload
+def _monthly_cache_metadata():
+    return calculate_current_cache_cycle(refresh_day=MONTHLY_CACHE_REFRESH_DAY)
 
 
 def _build_light_application_payload(drug_name: str):
     """
     Builds the first-load dashboard payload without constructing the expensive
     NDC crosswalk or graph payload. NDC and graph are lazy-loaded by their tabs.
+    
+    This payload is cached on the monthly source-data cycle.
     """
 
     package = get_therapeutic_class_explorer_package(drug_name)
@@ -173,6 +150,7 @@ def _build_light_application_payload(drug_name: str):
         "subtitle": "Visualizing how medication data becomes standardized, interoperable, and AI-ready.",
         "success": True,
         "lazy_payload": True,
+        "monthly_cache_policy": _monthly_cache_metadata(),
         "search": {
             "success": identity.get("success", False),
             "search_term": identity.get("search_term", drug_name),
@@ -236,43 +214,42 @@ def _build_light_application_payload(drug_name: str):
 
 def _get_full_payload_cached(drug_name: str):
     key = _cache_key("full", drug_name)
-    cached = _cache_get("drug", key)
-    if cached:
-        return cached
-    payload = get_full_application_payload(drug_name)
-    return _cache_set("drug", key, payload, DRUG_PAYLOAD_CACHE_TTL_SECONDS)
+    return get_cached_or_build(
+        category="drug_payloads",
+        key=key,
+        builder=lambda: get_full_application_payload(drug_name),
+        refresh_day=MONTHLY_CACHE_REFRESH_DAY,
+    )
+
 
 @app.get("/drug/{drug_name}")
 def get_drug_intelligence(drug_name: str):
     key = _cache_key("light", drug_name)
-    cached = _cache_get("drug", key)
-    if cached:
-        return cached
-
-    payload = _build_light_application_payload(drug_name)
-    return _cache_set("drug", key, payload, DRUG_PAYLOAD_CACHE_TTL_SECONDS)
+    return get_cached_or_build(
+        category="drug_payloads",
+        key=key,
+        builder=lambda: _build_light_application_payload(drug_name),
+        refresh_day=MONTHLY_CACHE_REFRESH_DAY,
+    )
 
 
 @app.get("/ndc/{drug_name}")
 def get_drug_ndc_intelligence(drug_name: str, limit: int = 50):
     safe_limit = max(1, min(int(limit or 50), 250))
     key = _cache_key("ndc", drug_name)
-    cached = _cache_get("ndc", key)
 
-    if cached:
-        cached["ndc_records"] = cached.get("ndc_records", [])[:safe_limit]
-        cached["render_limit"] = safe_limit
-        return cached
+    payload = get_cached_or_build(
+        category="ndc_payloads",
+        key=key,
+        builder=lambda: get_ndc_crosswalk(drug_name),
+        refresh_day=MONTHLY_CACHE_REFRESH_DAY,
+    )
 
-    payload = get_ndc_crosswalk(drug_name)
+    payload = deepcopy(payload)
     payload["lazy_loaded"] = True
     payload["render_limit"] = safe_limit
     full_records = payload.get("ndc_records", []) or []
     payload["ndc_count"] = payload.get("ndc_count", len(full_records))
-
-    cached_payload = deepcopy(payload)
-    _cache_set("ndc", key, cached_payload, NDC_CACHE_TTL_SECONDS)
-
     payload["ndc_records"] = full_records[:safe_limit]
     return payload
 
@@ -285,13 +262,13 @@ def suggest_drug_names(query: str, max_results: int = 8):
 @app.get("/trending-drugs")
 def trending_drugs(limit: int = 5):
     safe_limit = max(1, min(int(limit or 5), 10))
-    key = _cache_key("trending", safe_limit)
-    cached = _cache_get("trending", key)
-    if cached:
-        return cached
-
-    payload = get_trending_drugs(limit=safe_limit)
-    return _cache_set("trending", key, payload, TRENDING_ENDPOINT_CACHE_TTL_SECONDS)
+    key = _cache_key("cms-part-d", safe_limit)
+    return get_cached_or_build(
+        category="trending",
+        key=key,
+        builder=lambda: get_trending_drugs(limit=safe_limit, use_memory_cache=False),
+        refresh_day=MONTHLY_CACHE_REFRESH_DAY,
+    )
 
 
 def _clean_tooltip_text(value):
@@ -484,291 +461,296 @@ def _normalize_graph_payload(nodes, edges):
 def get_drug_graph(drug_name: str, max_detail_nodes: int = 4):
     safe_detail_limit = max(2, min(int(max_detail_nodes or 4), 8))
     key = _cache_key("graph", drug_name, safe_detail_limit)
-    cached = _cache_get("graph", key)
-    if cached:
-        return cached
 
-    payload = _get_full_payload_cached(drug_name)
+    def _build_graph_payload():
+        payload = _get_full_payload_cached(drug_name)
 
-    identity = payload.get("identity_card", {})
-    related = payload.get("related_concepts", {})
-    therapeutic = payload.get("therapeutic_classes", {})
-    ndc = payload.get("ndc_crosswalk", {})
+        identity = payload.get("identity_card", {})
+        related = payload.get("related_concepts", {})
+        therapeutic = payload.get("therapeutic_classes", {})
+        ndc = payload.get("ndc_crosswalk", {})
 
-    related_records = related.get("related_concepts", []) or []
-    atc_records = therapeutic.get("atc_hierarchy", []) or []
-    ndc_records = ndc.get("ndc_records", []) or []
+        related_records = related.get("related_concepts", []) or []
+        atc_records = therapeutic.get("atc_hierarchy", []) or []
+        ndc_records = ndc.get("ndc_records", []) or []
 
-    nodes = []
-    edges = []
+        nodes = []
+        edges = []
 
-    search_term = identity.get("search_term", drug_name) or drug_name
-    primary_rxcui = identity.get("primary_rxcui", "") or ""
+        search_term = identity.get("search_term", drug_name) or drug_name
+        primary_rxcui = identity.get("primary_rxcui", "") or ""
 
-    # Fixed dashboard direction:
-    # center searched drug is static -> evenly spaced category ring -> detail rings.
-    center = (0, 0)
-    hub_radius = 315
-    detail_radius = 130
+        # Fixed dashboard direction:
+        # center searched drug is static -> evenly spaced category ring -> detail rings.
+        center = (0, 0)
+        hub_radius = 315
+        detail_radius = 130
 
-    # The category ring is intentionally equidistant: six semantic hubs spaced
-    # every 60 degrees around the searched drug, similar to the SaaS circle
-    # diagram direction. Positive Y renders downward in vis-network.
-    hub_specs = [
-        ("atc_hub", "ATC", "atc", "Therapeutic class hierarchy used for clinical grouping.", 0),
-        ("ndc_hub", "NDC", "ndc", "Claims-ready National Drug Code mappings. NDC package context is preserved in hover metadata without drawing noisy cross-link lines.", 60),
-        ("analytics_hub", "Analytics", "analytics", "Downstream reporting, claims intelligence, and machine-learning use cases.", 120),
-        ("drug_hub", "Drug", "drug", "Related drug-name concepts. The searched medication remains static in the center even when this branch is filtered.", 180),
-        ("rxnorm_hub", "RxNorm", "rxnorm", "RxNorm semantic medication identity and related concept records.", 240),
-        ("rxcui_hub", "RxCUI", "rxcui", "Standardized RxNorm Concept Unique Identifier.", 300),
-    ]
+        # The category ring is intentionally equidistant: six semantic hubs spaced
+        # every 60 degrees around the searched drug, similar to the SaaS circle
+        # diagram direction. Positive Y renders downward in vis-network.
+        hub_specs = [
+            ("atc_hub", "ATC", "atc", "Therapeutic class hierarchy used for clinical grouping.", 0),
+            ("ndc_hub", "NDC", "ndc", "Claims-ready National Drug Code mappings. NDC package context is preserved in hover metadata without drawing noisy cross-link lines.", 60),
+            ("analytics_hub", "Analytics", "analytics", "Downstream reporting, claims intelligence, and machine-learning use cases.", 120),
+            ("drug_hub", "Drug", "drug", "Related drug-name concepts. The searched medication remains static in the center even when this branch is filtered.", 180),
+            ("rxnorm_hub", "RxNorm", "rxnorm", "RxNorm semantic medication identity and related concept records.", 240),
+            ("rxcui_hub", "RxCUI", "rxcui", "Standardized RxNorm Concept Unique Identifier.", 300),
+        ]
 
-    hubs = {}
-    for hub_id, label, group, title, angle in hub_specs:
-        x, y = _point_on_circle(center[0], center[1], hub_radius, angle)
-        hubs[hub_id] = (label, group, title, x, y, angle)
+        hubs = {}
+        for hub_id, label, group, title, angle in hub_specs:
+            x, y = _point_on_circle(center[0], center[1], hub_radius, angle)
+            hubs[hub_id] = (label, group, title, x, y, angle)
 
-    nodes.append(_fixed_node(
-        "drug_center",
-        _short_node_label(search_term, 16),
-        "searched_drug",
-        _format_tooltip(
-            "Searched medication",
-            search_term,
-            "Static center node. Always visible while filters show or hide the surrounding categories."
-        ),
-        center[0],
-        center[1],
-        38,
-        "center",
-    ))
-    nodes[-1]["node_type"] = "Drug (Searched)"
-    nodes[-1]["rxcui"] = primary_rxcui
-    nodes[-1]["description"] = "Static center node. Always visible while filters show or hide surrounding category branches."
-    nodes[-1]["source"] = "RxNorm / RxNav"
-
-    for hub_id, (label, group, title, x, y, outward_angle) in hubs.items():
-        hub_node = _fixed_node(hub_id, label, group, title, x, y, 30, "hub")
-        hub_node["node_type"] = f"{label} Category Hub"
-        hub_node["description"] = title
-        hub_node["source"] = "RxNorm Intelligence Explorer"
-        nodes.append(hub_node)
-        edges.append(_edge("drug_center", hub_id, "maps to", "Maps To", primary=True))
-
-    # Drug-name details.
-    drug_candidates = [
-        r for r in related_records
-        if str(r.get("term_type", "")).upper() in {"BN", "SBD", "SCD", "SBDF", "SCDF"}
-        and str(r.get("name", "")).strip()
-        and str(r.get("name", "")).strip().lower() != search_term.lower()
-    ]
-    drug_details = _unique_by_key(drug_candidates, "name", min(4, safe_detail_limit))
-    for i, (record, (x, y)) in enumerate(zip(
-        drug_details,
-        _radial_child_positions(
-            hubs["drug_hub"][3],
-            hubs["drug_hub"][4],
-            detail_radius,
-            hubs["drug_hub"][5],
-            len(drug_details),
-            120,
-        )
-    )):
-        node_id = f"drug_detail_{i}"
-        drug_node = _detail_node(
-            node_id,
-            record.get("name", "Drug Concept"),
-            "drug",
-            record.get("term_type_description", "Related drug concept"),
-            x,
-            y,
-            17,
-        )
-        drug_node["node_type"] = record.get("term_type_description", "Related Drug Concept")
-        drug_node["description"] = record.get("name", "Related drug concept")
-        drug_node["source"] = "RxNorm / RxNav"
-        drug_node["additional_context"] = _format_tooltip(record.get("term_type", ""), record.get("rxcui", ""))
-        nodes.append(drug_node)
-        edges.append(_edge("drug_hub", node_id, "related concept", "Related Concept"))
-
-    # RxCUI detail.
-    if primary_rxcui:
-        x, y = _radial_child_positions(
-            hubs["rxcui_hub"][3],
-            hubs["rxcui_hub"][4],
-            detail_radius,
-            hubs["rxcui_hub"][5],
-            1,
-        )[0]
-        rxcui_node = _detail_node(
-            "rxcui_primary",
-            primary_rxcui,
-            "rxcui",
-            "Primary RxNorm Concept Unique Identifier.",
-            x,
-            y,
-            19,
-        )
-        rxcui_node["node_type"] = "Primary RxCUI"
-        rxcui_node["rxcui"] = primary_rxcui
-        rxcui_node["description"] = "Primary RxNorm Concept Unique Identifier used as the normalized medication anchor."
-        rxcui_node["source"] = "RxNorm / RxNav"
-        nodes.append(rxcui_node)
-        edges.append(_edge("rxcui_hub", "rxcui_primary", "resolves to", "Resolves To"))
-
-    # RxNorm semantic relationship details.
-    rxnorm_details = _unique_by_key(related_records, "term_type_description", safe_detail_limit)
-    for i, (record, (x, y)) in enumerate(zip(
-        rxnorm_details,
-        _radial_child_positions(
-            hubs["rxnorm_hub"][3],
-            hubs["rxnorm_hub"][4],
-            detail_radius,
-            hubs["rxnorm_hub"][5],
-            len(rxnorm_details),
-            125,
-        )
-    )):
-        node_id = f"rxnorm_detail_{i}"
-        label = record.get("term_type", "RxNorm") or "RxNorm"
-        relationship_type = record.get("term_type_description", "RxNorm concept")
-        # Clean RxNorm hover tooltip: remove repetitive headers such as
-        # "IN" + "RxNorm Relationship Type" and keep only the useful lines.
-        title = _format_tooltip(
-            relationship_type,
-            record.get("term_type", ""),
-            record.get("name", "")
-        )
-        rx_node = _detail_node(node_id, label, "rxnorm", title, x, y, 17)
-        # Override generic detail-node title so RxNorm tooltips do not repeat the code twice.
-        rx_node["title"] = title
-        rx_node["node_type"] = relationship_type
-        rx_node["description"] = record.get("name", "RxNorm semantic relationship")
-        rx_node["source"] = "RxNorm / RxNav"
-        rx_node["additional_context"] = _format_tooltip(record.get("term_type", ""), record.get("name", ""))
-        nodes.append(rx_node)
-        edges.append(_edge("rxnorm_hub", node_id, "semantic relationship", relationship_type))
-
-    # ATC detail nodes.
-    # Keep the graph to three visual rings: searched drug -> category hubs -> detail nodes.
-    # ATC hierarchy context now lives inside the ATC detail node tooltip and Node Details panel
-    # instead of rendering separate Level 1-4 circles.
-    atc_details = _unique_by_key(atc_records, "full_class_id", safe_detail_limit)
-
-    for i, (record, (x, y)) in enumerate(zip(
-        atc_details,
-        _radial_child_positions(
-            hubs["atc_hub"][3],
-            hubs["atc_hub"][4],
-            detail_radius,
-            hubs["atc_hub"][5],
-            len(atc_details),
-            125,
-        )
-    )):
-        node_id = f"atc_detail_{i}"
-        full_code = record.get("full_class_id", "ATC") or "ATC"
-        full_name = record.get("full_class_name", "Therapeutic class") or "Therapeutic class"
-        hierarchy_lines = _format_tooltip(
-            f"{record.get('atc_level_1_code', '')} - ATC anatomical main group" if record.get("atc_level_1_code") else "",
-            f"{record.get('atc_level_2_code', '')} - ATC therapeutic subgroup" if record.get("atc_level_2_code") else "",
-            f"{record.get('atc_level_3_code', '')} - ATC pharmacological subgroup" if record.get("atc_level_3_code") else "",
-            f"{record.get('atc_level_4_code', '')} - {full_name}" if record.get("atc_level_4_code") else "",
-        )
-        atc_title = _format_tooltip(full_code, full_name, hierarchy_lines)
-        atc_node = _detail_node(
-            node_id,
-            full_code,
-            "atc",
-            atc_title,
-            x,
-            y,
-            17,
-        )
-        # Override the generic detail-node title so the code is not duplicated at the top.
-        atc_node["title"] = atc_title
-        atc_node["node_type"] = "ATC Therapeutic Class"
-        atc_node["description"] = _format_tooltip(full_code, full_name)
-        atc_node["source"] = "RxClass / RxNav"
-        atc_node["additional_context"] = hierarchy_lines
-        nodes.append(atc_node)
-        edges.append(_edge("atc_hub", node_id, "classified into", "Classified Into"))
-
-    # NDC package / claims details. Cross-link context is retained in hover metadata
-    # instead of rendering additional long diagonal edges.
-    ndc_details = _unique_by_key(ndc_records, "ndc11", safe_detail_limit)
-    for i, (record, (x, y)) in enumerate(zip(
-        ndc_details,
-        _radial_child_positions(
-            hubs["ndc_hub"][3],
-            hubs["ndc_hub"][4],
-            detail_radius,
-            hubs["ndc_hub"][5],
-            len(ndc_details),
-            120,
-        )
-    )):
-        node_id = f"ndc_detail_{i}"
-        clinical_rxcui = record.get("clinical_drug_rxcui") or record.get("rxcui") or ""
-        ndc_node = _detail_node(
-            node_id,
-            record.get("ndc11", "NDC"),
-            "ndc",
+        nodes.append(_fixed_node(
+            "drug_center",
+            _short_node_label(search_term, 16),
+            "searched_drug",
             _format_tooltip(
-                "Package / claims-level identifier",
-                "Cross-link to package / clinical drug concept",
-                f"Clinical Drug RxCUI: {clinical_rxcui}" if clinical_rxcui else ""
+                "Searched medication",
+                search_term,
+                "Static center node. Always visible while filters show or hide the surrounding categories."
             ),
-            x,
-            y,
-            16,
-        )
-        ndc_node["node_type"] = "NDC Package / Claims Identifier"
-        ndc_node["rxcui"] = clinical_rxcui
-        ndc_node["description"] = record.get("ndc11", "NDC")
-        ndc_node["source"] = record.get("source", "RxNorm Related NDC")
-        ndc_node["additional_context"] = _format_tooltip(
-            "Package / claims-level identifier",
-            f"NDC10: {record.get('ndc10', '')}" if record.get("ndc10") else "",
-            f"NDC9: {record.get('ndc9', '')}" if record.get("ndc9") else "",
-            f"Clinical Drug RxCUI: {clinical_rxcui}" if clinical_rxcui else ""
-        )
-        nodes.append(ndc_node)
-        edges.append(_edge("ndc_hub", node_id, "maps to", "Maps To"))
+            center[0],
+            center[1],
+            38,
+            "center",
+        ))
+        nodes[-1]["node_type"] = "Drug (Searched)"
+        nodes[-1]["rxcui"] = primary_rxcui
+        nodes[-1]["description"] = "Static center node. Always visible while filters show or hide surrounding category branches."
+        nodes[-1]["source"] = "RxNorm / RxNav"
 
-    # Analytics details.
-    analytics_details = [
-        ("Claims Mapping", "Connects normalized medication identity to pharmacy claims workflows."),
-        ("Utilization Analytics", "Supports utilization, trend, and therapeutic category analysis."),
-        ("AI / ML Features", "Creates structured features for predictive modeling and AI-ready intelligence."),
-    ]
-    for i, ((label, title), (x, y)) in enumerate(zip(
-        analytics_details,
-        _radial_child_positions(
-            hubs["analytics_hub"][3],
-            hubs["analytics_hub"][4],
-            detail_radius,
-            hubs["analytics_hub"][5],
-            len(analytics_details),
-            115,
-        )
-    )):
-        node_id = f"analytics_detail_{i}"
-        analytics_node = _detail_node(node_id, label, "analytics", title, x, y, 17)
-        analytics_node["node_type"] = "Analytics Use Case"
-        analytics_node["description"] = title
-        analytics_node["source"] = "RxNorm Intelligence Explorer"
-        nodes.append(analytics_node)
-        edges.append(_edge("analytics_hub", node_id, "enables", "Enables"))
+        for hub_id, (label, group, title, x, y, outward_angle) in hubs.items():
+            hub_node = _fixed_node(hub_id, label, group, title, x, y, 30, "hub")
+            hub_node["node_type"] = f"{label} Category Hub"
+            hub_node["description"] = title
+            hub_node["source"] = "RxNorm Intelligence Explorer"
+            nodes.append(hub_node)
+            edges.append(_edge("drug_center", hub_id, "maps to", "Maps To", primary=True))
 
-    nodes, edges = _normalize_graph_payload(nodes, edges)
+        # Drug-name details.
+        drug_candidates = [
+            r for r in related_records
+            if str(r.get("term_type", "")).upper() in {"BN", "SBD", "SCD", "SBDF", "SCDF"}
+            and str(r.get("name", "")).strip()
+            and str(r.get("name", "")).strip().lower() != search_term.lower()
+        ]
+        drug_details = _unique_by_key(drug_candidates, "name", min(4, safe_detail_limit))
+        for i, (record, (x, y)) in enumerate(zip(
+            drug_details,
+            _radial_child_positions(
+                hubs["drug_hub"][3],
+                hubs["drug_hub"][4],
+                detail_radius,
+                hubs["drug_hub"][5],
+                len(drug_details),
+                120,
+            )
+        )):
+            node_id = f"drug_detail_{i}"
+            drug_node = _detail_node(
+                node_id,
+                record.get("name", "Drug Concept"),
+                "drug",
+                record.get("term_type_description", "Related drug concept"),
+                x,
+                y,
+                17,
+            )
+            drug_node["node_type"] = record.get("term_type_description", "Related Drug Concept")
+            drug_node["description"] = record.get("name", "Related drug concept")
+            drug_node["source"] = "RxNorm / RxNav"
+            drug_node["additional_context"] = _format_tooltip(record.get("term_type", ""), record.get("rxcui", ""))
+            nodes.append(drug_node)
+            edges.append(_edge("drug_hub", node_id, "related concept", "Related Concept"))
 
-    graph_payload = {
-        "drug_name": drug_name,
-        "layout": "static_center_true_concentric_rings",
-        "nodes": nodes,
-        "edges": edges,
-        "max_detail_nodes": safe_detail_limit,
-    }
+        # RxCUI detail.
+        if primary_rxcui:
+            x, y = _radial_child_positions(
+                hubs["rxcui_hub"][3],
+                hubs["rxcui_hub"][4],
+                detail_radius,
+                hubs["rxcui_hub"][5],
+                1,
+            )[0]
+            rxcui_node = _detail_node(
+                "rxcui_primary",
+                primary_rxcui,
+                "rxcui",
+                "Primary RxNorm Concept Unique Identifier.",
+                x,
+                y,
+                19,
+            )
+            rxcui_node["node_type"] = "Primary RxCUI"
+            rxcui_node["rxcui"] = primary_rxcui
+            rxcui_node["description"] = "Primary RxNorm Concept Unique Identifier used as the normalized medication anchor."
+            rxcui_node["source"] = "RxNorm / RxNav"
+            nodes.append(rxcui_node)
+            edges.append(_edge("rxcui_hub", "rxcui_primary", "resolves to", "Resolves To"))
 
-    return _cache_set("graph", key, graph_payload, GRAPH_CACHE_TTL_SECONDS)
+        # RxNorm semantic relationship details.
+        rxnorm_details = _unique_by_key(related_records, "term_type_description", safe_detail_limit)
+        for i, (record, (x, y)) in enumerate(zip(
+            rxnorm_details,
+            _radial_child_positions(
+                hubs["rxnorm_hub"][3],
+                hubs["rxnorm_hub"][4],
+                detail_radius,
+                hubs["rxnorm_hub"][5],
+                len(rxnorm_details),
+                125,
+            )
+        )):
+            node_id = f"rxnorm_detail_{i}"
+            label = record.get("term_type", "RxNorm") or "RxNorm"
+            relationship_type = record.get("term_type_description", "RxNorm concept")
+            # Clean RxNorm hover tooltip: remove repetitive headers such as
+            # "IN" + "RxNorm Relationship Type" and keep only the useful lines.
+            title = _format_tooltip(
+                relationship_type,
+                record.get("term_type", ""),
+                record.get("name", "")
+            )
+            rx_node = _detail_node(node_id, label, "rxnorm", title, x, y, 17)
+            # Override generic detail-node title so RxNorm tooltips do not repeat the code twice.
+            rx_node["title"] = title
+            rx_node["node_type"] = relationship_type
+            rx_node["description"] = record.get("name", "RxNorm semantic relationship")
+            rx_node["source"] = "RxNorm / RxNav"
+            rx_node["additional_context"] = _format_tooltip(record.get("term_type", ""), record.get("name", ""))
+            nodes.append(rx_node)
+            edges.append(_edge("rxnorm_hub", node_id, "semantic relationship", relationship_type))
+
+        # ATC detail nodes.
+        # Keep the graph to three visual rings: searched drug -> category hubs -> detail nodes.
+        # ATC hierarchy context now lives inside the ATC detail node tooltip and Node Details panel
+        # instead of rendering separate Level 1-4 circles.
+        atc_details = _unique_by_key(atc_records, "full_class_id", safe_detail_limit)
+
+        for i, (record, (x, y)) in enumerate(zip(
+            atc_details,
+            _radial_child_positions(
+                hubs["atc_hub"][3],
+                hubs["atc_hub"][4],
+                detail_radius,
+                hubs["atc_hub"][5],
+                len(atc_details),
+                125,
+            )
+        )):
+            node_id = f"atc_detail_{i}"
+            full_code = record.get("full_class_id", "ATC") or "ATC"
+            full_name = record.get("full_class_name", "Therapeutic class") or "Therapeutic class"
+            hierarchy_lines = _format_tooltip(
+                f"{record.get('atc_level_1_code', '')} - ATC anatomical main group" if record.get("atc_level_1_code") else "",
+                f"{record.get('atc_level_2_code', '')} - ATC therapeutic subgroup" if record.get("atc_level_2_code") else "",
+                f"{record.get('atc_level_3_code', '')} - ATC pharmacological subgroup" if record.get("atc_level_3_code") else "",
+                f"{record.get('atc_level_4_code', '')} - {full_name}" if record.get("atc_level_4_code") else "",
+            )
+            atc_title = _format_tooltip(full_code, full_name, hierarchy_lines)
+            atc_node = _detail_node(
+                node_id,
+                full_code,
+                "atc",
+                atc_title,
+                x,
+                y,
+                17,
+            )
+            # Override the generic detail-node title so the code is not duplicated at the top.
+            atc_node["title"] = atc_title
+            atc_node["node_type"] = "ATC Therapeutic Class"
+            atc_node["description"] = _format_tooltip(full_code, full_name)
+            atc_node["source"] = "RxClass / RxNav"
+            atc_node["additional_context"] = hierarchy_lines
+            nodes.append(atc_node)
+            edges.append(_edge("atc_hub", node_id, "classified into", "Classified Into"))
+
+        # NDC package / claims details. Cross-link context is retained in hover metadata
+        # instead of rendering additional long diagonal edges.
+        ndc_details = _unique_by_key(ndc_records, "ndc11", safe_detail_limit)
+        for i, (record, (x, y)) in enumerate(zip(
+            ndc_details,
+            _radial_child_positions(
+                hubs["ndc_hub"][3],
+                hubs["ndc_hub"][4],
+                detail_radius,
+                hubs["ndc_hub"][5],
+                len(ndc_details),
+                120,
+            )
+        )):
+            node_id = f"ndc_detail_{i}"
+            clinical_rxcui = record.get("clinical_drug_rxcui") or record.get("rxcui") or ""
+            ndc_node = _detail_node(
+                node_id,
+                record.get("ndc11", "NDC"),
+                "ndc",
+                _format_tooltip(
+                    "Package / claims-level identifier",
+                    "Cross-link to package / clinical drug concept",
+                    f"Clinical Drug RxCUI: {clinical_rxcui}" if clinical_rxcui else ""
+                ),
+                x,
+                y,
+                16,
+            )
+            ndc_node["node_type"] = "NDC Package / Claims Identifier"
+            ndc_node["rxcui"] = clinical_rxcui
+            ndc_node["description"] = record.get("ndc11", "NDC")
+            ndc_node["source"] = record.get("source", "RxNorm Related NDC")
+            ndc_node["additional_context"] = _format_tooltip(
+                "Package / claims-level identifier",
+                f"NDC10: {record.get('ndc10', '')}" if record.get("ndc10") else "",
+                f"NDC9: {record.get('ndc9', '')}" if record.get("ndc9") else "",
+                f"Clinical Drug RxCUI: {clinical_rxcui}" if clinical_rxcui else ""
+            )
+            nodes.append(ndc_node)
+            edges.append(_edge("ndc_hub", node_id, "maps to", "Maps To"))
+
+        # Analytics details.
+        analytics_details = [
+            ("Claims Mapping", "Connects normalized medication identity to pharmacy claims workflows."),
+            ("Utilization Analytics", "Supports utilization, trend, and therapeutic category analysis."),
+            ("AI / ML Features", "Creates structured features for predictive modeling and AI-ready intelligence."),
+        ]
+        for i, ((label, title), (x, y)) in enumerate(zip(
+            analytics_details,
+            _radial_child_positions(
+                hubs["analytics_hub"][3],
+                hubs["analytics_hub"][4],
+                detail_radius,
+                hubs["analytics_hub"][5],
+                len(analytics_details),
+                115,
+            )
+        )):
+            node_id = f"analytics_detail_{i}"
+            analytics_node = _detail_node(node_id, label, "analytics", title, x, y, 17)
+            analytics_node["node_type"] = "Analytics Use Case"
+            analytics_node["description"] = title
+            analytics_node["source"] = "RxNorm Intelligence Explorer"
+            nodes.append(analytics_node)
+            edges.append(_edge("analytics_hub", node_id, "enables", "Enables"))
+
+        nodes, edges = _normalize_graph_payload(nodes, edges)
+
+        graph_payload = {
+            "drug_name": drug_name,
+            "layout": "static_center_true_concentric_rings",
+            "nodes": nodes,
+            "edges": edges,
+            "max_detail_nodes": safe_detail_limit,
+        }
+
+        return graph_payload
+
+    return get_cached_or_build(
+        category="graph_payloads",
+        key=key,
+        builder=_build_graph_payload,
+        refresh_day=MONTHLY_CACHE_REFRESH_DAY,
+    )
