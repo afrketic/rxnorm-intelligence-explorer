@@ -9,42 +9,48 @@
 </head>
 <body>
   <main class="app">
-    <section class="hero">
-      <p class="eyebrow">AI - Alex Intelligence</p>
-      <h1>RxNorm Intelligence Explorer</h1>
-      <p class="subtitle">A medication interoperability workspace for RxNorm identity, ATC hierarchy, NDC claims mapping, and AI-ready analytics.</p>
-    </section>
-
-    <section class="search-card">
-      <div class="search-header">
-        <div>
-          <label for="drugInput">Search Medication</label>
-          <p>Explore standardized medication intelligence across RxCUI, RxNorm concepts, ATC classes, NDC identifiers, and claims-ready analytics.</p>
-        </div>
-        <span class="status-pill">Live RxNav API</span>
+    <section class="hero app-dashboard-hero">
+      <div class="brand-row">
+        <img src="alex-knows-ai-logo.png" alt="Alex Knows AI" class="brand-logo" />
+        <span class="status-pill hero-status-pill">Live RxNav API</span>
       </div>
 
-      <div class="search-row">
-        <div class="autocomplete-wrap">
-          <input id="drugInput" type="text" placeholder="Enter a drug name — example: atorvastatin, Ozempic, Humira" autocomplete="off" aria-autocomplete="list" aria-controls="suggestionBox" />
-          <div id="suggestionBox" class="suggestion-box hidden" role="listbox" aria-label="Medication search suggestions"></div>
-        </div>
-        <button id="searchButton">Explore Drug Intelligence</button>
+      <div class="hero-content">
+        <h1>RxNorm Intelligence Explorer</h1>
+        <p class="subtitle">A medication interoperability workspace for RxNorm identity, ATC hierarchy, NDC claims mapping, and AI-ready analytics.</p>
       </div>
 
-      <div class="popular-searches" aria-label="Popular medication searches">
-        <div class="popular-searches-header">
-          <span>Popular Medication Searches</span>
-          <small id="popularSearchSource">CMS Medicare Part D claim volume</small>
+      <section class="search-card hero-search-card">
+        <div class="search-header">
+          <div>
+            <label for="drugInput">Search Medication</label>
+            <p>Explore standardized medication intelligence across RxCUI, RxNorm concepts, ATC classes, NDC identifiers, and claims-ready analytics.</p>
+          </div>
+          <span class="status-pill">Live RxNav API</span>
         </div>
-        <div id="popularSearchButtons" class="examples popular-search-buttons">
-          <button class="example-btn">Atorvastatin</button>
-          <button class="example-btn">Levothyroxine</button>
-          <button class="example-btn">Metformin</button>
-          <button class="example-btn">Lisinopril</button>
-          <button class="example-btn">Amlodipine</button>
+
+        <div class="search-row">
+          <div class="autocomplete-wrap">
+            <input id="drugInput" type="text" placeholder="Enter a drug name — example: atorvastatin, Ozempic, Humira" autocomplete="off" aria-autocomplete="list" aria-controls="suggestionBox" />
+            <div id="suggestionBox" class="suggestion-box hidden" role="listbox" aria-label="Medication search suggestions"></div>
+          </div>
+          <button id="searchButton">Explore Drug Intelligence</button>
         </div>
-      </div>
+
+        <div class="popular-searches" aria-label="Popular medication searches">
+          <div class="popular-searches-header">
+            <span>Popular Medication Searches</span>
+            <small id="popularSearchSource">CMS Medicare Part D claim volume</small>
+          </div>
+          <div id="popularSearchButtons" class="examples popular-search-buttons">
+            <button class="example-btn" type="button">Atorvastatin</button>
+            <button class="example-btn" type="button">Levothyroxine</button>
+            <button class="example-btn" type="button">Metformin</button>
+            <button class="example-btn" type="button">Lisinopril</button>
+            <button class="example-btn" type="button">Amlodipine</button>
+          </div>
+        </div>
+      </section>
     </section>
 
     <div id="statusMessage" class="status"></div>
