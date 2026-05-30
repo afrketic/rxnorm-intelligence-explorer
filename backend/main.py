@@ -4,6 +4,7 @@ import math
 import html
 import re
 from copy import deepcopy
+from datetime import datetime, timezone
 
 from app.rxnorm_client import (
     get_full_application_payload,
@@ -13,24 +14,44 @@ from app.rxnorm_client import (
 
 
 try:
-    from backend.cache_manager import get_cached_or_build, calculate_current_cache_cycle
+    from backend.cache_manager import (
+        get_cached_or_build,
+        calculate_current_cache_cycle,
+        read_status,
+        write_status,
+        get_cache_summary,
+        utc_now_iso,
+    )
 except ImportError:
-    from cache_manager import get_cached_or_build, calculate_current_cache_cycle
+    from cache_manager import (
+        get_cached_or_build,
+        calculate_current_cache_cycle,
+        read_status,
+        write_status,
+        get_cache_summary,
+        utc_now_iso,
+    )
 
 try:
-    from app.trending_drugs import get_trending_drugs
+    from backend.trending_drugs import get_trending_drugs
 except ImportError:
-    def get_trending_drugs(limit: int = 5):
-        fallback = ["Atorvastatin", "Levothyroxine", "Metformin", "Lisinopril", "Amlodipine"]
-        return {
-            "success": False,
-            "used_fallback": True,
-            "display_label": "Popular Medication Searches",
-            "source": "Fallback list",
-            "metric": "Fallback",
-            "dataset_period": "Unavailable",
-            "trending_drugs": [{"rank": i + 1, "drug_name": name, "total_claim_count": None} for i, name in enumerate(fallback[:limit])]
-        }
+    try:
+        from app.trending_drugs import get_trending_drugs
+    except ImportError:
+        def get_trending_drugs(limit: int = 5, use_memory_cache: bool = True):
+            fallback = ["Atorvastatin", "Levothyroxine", "Metformin", "Lisinopril", "Amlodipine"]
+            return {
+                "success": False,
+                "used_fallback": True,
+                "display_label": "Popular Medication Searches",
+                "source": "Fallback list",
+                "metric": "Fallback",
+                "dataset_period": "Unavailable",
+                "trending_drugs": [
+                    {"rank": i + 1, "drug_name": name, "total_claim_count": None}
+                    for i, name in enumerate(fallback[:limit])
+                ],
+            }
 
 try:
     from app.rxnorm_client import get_drug_name_suggestions
@@ -330,11 +351,47 @@ def _prewarm_one_drug(drug_name: str, ndc_limit: int = 50, max_detail_nodes: int
     return result
 
 
-CACHE_PREWARM_STATUS = {
-    "status": "idle",
-    "message": "Cache prewarm has not started yet.",
-    "last_result": None,
-}
+PREWARM_STATUS_KEY = "prewarm_status"
+PREWARM_STALE_MINUTES = 90
+
+
+def _default_prewarm_status():
+    return {
+        "status": "idle",
+        "message": "Cache prewarm has not started yet.",
+        "last_result": None,
+        "cache_policy": _monthly_cache_metadata(),
+    }
+
+
+def _load_prewarm_status():
+    return read_status(PREWARM_STATUS_KEY) or _default_prewarm_status()
+
+
+def _persist_prewarm_status(**updates):
+    current = _load_prewarm_status()
+    current.update(updates)
+    current.setdefault("cache_policy", _monthly_cache_metadata())
+    return write_status(PREWARM_STATUS_KEY, current)
+
+
+def _is_stale_running_status(status_payload):
+    if status_payload.get("status") not in {"running", "started", "already_running"}:
+        return False
+
+    updated_at = status_payload.get("status_updated_at_utc") or status_payload.get("started_at_utc")
+    if not updated_at:
+        return True
+
+    try:
+        parsed = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00"))
+        age_seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
+        return age_seconds > PREWARM_STALE_MINUTES * 60
+    except Exception:
+        return True
+
+
+CACHE_PREWARM_STATUS = _load_prewarm_status()
 
 
 def _run_cache_prewarm_sync(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4):
@@ -346,11 +403,15 @@ def _run_cache_prewarm_sync(limit: int = 5, ndc_limit: int = 50, max_detail_node
     of waiting on many external API calls.
     """
 
-    CACHE_PREWARM_STATUS.update({
-        "status": "running",
-        "message": "Monthly cache prewarm is running in the background.",
-        "last_result": None,
-    })
+    CACHE_PREWARM_STATUS.update(_persist_prewarm_status(
+        status="running",
+        message="Monthly cache prewarm is running in the background.",
+        started_at_utc=utc_now_iso(),
+        last_result=None,
+        current_drug=None,
+        drug_results_so_far=[],
+        errors=[],
+    ))
 
     safe_limit = max(1, min(int(limit or 5), 10))
     safe_ndc_limit = max(1, min(int(ndc_limit or 50), 250))
@@ -384,6 +445,13 @@ def _run_cache_prewarm_sync(limit: int = 5, ndc_limit: int = 50, max_detail_node
     drug_results = []
     for name in prewarm_drugs:
         print(f"[CACHE PREWARM] Warming {name}...")
+        CACHE_PREWARM_STATUS.update(_persist_prewarm_status(
+            status="running",
+            message=f"Monthly cache prewarm is warming {name}.",
+            current_drug=name,
+            drug_results_so_far=drug_results,
+            errors=errors,
+        ))
         drug_results.append(
             _prewarm_one_drug(
                 drug_name=name,
@@ -391,6 +459,13 @@ def _run_cache_prewarm_sync(limit: int = 5, ndc_limit: int = 50, max_detail_node
                 max_detail_nodes=safe_detail_limit,
             )
         )
+        CACHE_PREWARM_STATUS.update(_persist_prewarm_status(
+            status="running",
+            message=f"Monthly cache prewarm completed {name}.",
+            current_drug=name,
+            drug_results_so_far=drug_results,
+            errors=errors,
+        ))
 
     warmed_successfully = sum(1 for item in drug_results if item.get("success"))
     failed = [item for item in drug_results if not item.get("success")]
@@ -410,11 +485,15 @@ def _run_cache_prewarm_sync(limit: int = 5, ndc_limit: int = 50, max_detail_node
         "errors": errors,
     }
 
-    CACHE_PREWARM_STATUS.update({
-        "status": "completed" if result.get("success") else "completed_with_errors",
-        "message": result.get("message", "Monthly cache prewarm finished."),
-        "last_result": result,
-    })
+    CACHE_PREWARM_STATUS.update(_persist_prewarm_status(
+        status="completed" if result.get("success") else "completed_with_errors",
+        message=result.get("message", "Monthly cache prewarm finished."),
+        completed_at_utc=utc_now_iso(),
+        current_drug=None,
+        drug_results_so_far=drug_results,
+        last_result=result,
+        errors=errors,
+    ))
 
     print("[CACHE PREWARM] Completed.")
     return result
@@ -432,13 +511,23 @@ def prewarm_cache(background_tasks: BackgroundTasks, limit: int = 5, ndc_limit: 
     RxClass, NDC, graph, and dashboard caches are being rebuilt.
     """
 
-    if CACHE_PREWARM_STATUS.get("status") == "running":
+    current_status = _load_prewarm_status()
+    if current_status.get("status") in {"running", "started"} and not _is_stale_running_status(current_status):
         return {
             "success": True,
             "status": "already_running",
             "message": "Cache prewarm is already running in the background.",
             "cache_policy": _monthly_cache_metadata(),
+            "prewarm_status": current_status,
         }
+
+    if _is_stale_running_status(current_status):
+        _persist_prewarm_status(
+            status="interrupted",
+            message="Previous cache prewarm appeared stale or was interrupted by a restart; starting a new run.",
+            interrupted_at_utc=utc_now_iso(),
+            previous_status=current_status,
+        )
 
     background_tasks.add_task(
         _run_cache_prewarm_sync,
@@ -447,10 +536,12 @@ def prewarm_cache(background_tasks: BackgroundTasks, limit: int = 5, ndc_limit: 
         max_detail_nodes=max_detail_nodes,
     )
 
-    CACHE_PREWARM_STATUS.update({
-        "status": "started",
-        "message": "Cache prewarm was accepted and will run in the background.",
-    })
+    CACHE_PREWARM_STATUS.update(_persist_prewarm_status(
+        status="started",
+        message="Cache prewarm was accepted and will run in the background.",
+        accepted_at_utc=utc_now_iso(),
+        last_result=None,
+    ))
 
     return {
         "success": True,
@@ -463,8 +554,23 @@ def prewarm_cache(background_tasks: BackgroundTasks, limit: int = 5, ndc_limit: 
 
 @app.get("/cache/prewarm/status")
 def get_cache_prewarm_status():
-    """Returns the latest in-memory cache prewarm status for quick diagnostics."""
-    return CACHE_PREWARM_STATUS
+    """Returns the latest persistent cache prewarm status for quick diagnostics."""
+    status_payload = _load_prewarm_status()
+    if _is_stale_running_status(status_payload):
+        status_payload = _persist_prewarm_status(
+            status="interrupted",
+            message="Previous cache prewarm appears stale or was interrupted by a restart.",
+            interrupted_at_utc=utc_now_iso(),
+            previous_status=status_payload,
+        )
+    CACHE_PREWARM_STATUS.update(status_payload)
+    return status_payload
+
+
+@app.get("/cache/stats")
+def get_cache_stats():
+    """Returns disk-backed cache folder counts and storage diagnostics."""
+    return get_cache_summary()
 
 
 @app.post("/cache/prewarm/sync")

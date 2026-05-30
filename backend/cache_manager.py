@@ -26,18 +26,25 @@ from pathlib import Path
 import hashlib
 import json
 import os
+import tempfile
 import re
 from typing import Any, Callable, Dict, Optional
 
 
 DEFAULT_REFRESH_DAY = int(os.getenv("MONTHLY_CACHE_REFRESH_DAY", "15"))
-BASE_CACHE_DIR = Path(__file__).resolve().parent / "cache"
+BASE_CACHE_DIR = Path(
+    os.getenv("RXNORM_CACHE_DIR")
+    or os.getenv("RENDER_DISK_CACHE_DIR")
+    or os.getenv("PERSISTENT_CACHE_DIR")
+    or (Path(__file__).resolve().parent / "cache")
+)
 
 CACHE_FOLDERS = {
     "drug_payloads": BASE_CACHE_DIR / "drug_payloads",
     "graph_payloads": BASE_CACHE_DIR / "graph_payloads",
     "ndc_payloads": BASE_CACHE_DIR / "ndc_payloads",
     "trending": BASE_CACHE_DIR / "trending",
+    "status": BASE_CACHE_DIR / "status",
 }
 
 
@@ -123,6 +130,78 @@ def read_cache(category: str, key: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    """Writes JSON atomically so interrupted cache writes do not corrupt files."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, ensure_ascii=False, indent=2)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+
+
+def read_status(status_name: str) -> Optional[Dict[str, Any]]:
+    path = get_cache_path("status", status_name)
+    if not path.exists():
+        return None
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except Exception:
+        return None
+
+
+def write_status(status_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    path = get_cache_path("status", status_name)
+    safe_payload = dict(payload or {})
+    safe_payload["status_updated_at_utc"] = utc_now_iso()
+    safe_payload["cache_base_dir"] = str(BASE_CACHE_DIR)
+    try:
+        _atomic_write_json(path, safe_payload)
+    except Exception:
+        pass
+    return safe_payload
+
+
+def get_cache_summary() -> Dict[str, Any]:
+    ensure_cache_directories()
+    folders = {}
+    total_files = 0
+    total_bytes = 0
+
+    for name, folder in CACHE_FOLDERS.items():
+        files = list(folder.glob("*.json")) if folder.exists() else []
+        size_bytes = 0
+        for file_path in files:
+            try:
+                size_bytes += file_path.stat().st_size
+            except Exception:
+                pass
+        folders[name] = {
+            "path": str(folder),
+            "json_file_count": len(files),
+            "size_bytes": size_bytes,
+        }
+        total_files += len(files)
+        total_bytes += size_bytes
+
+    return {
+        "cache_base_dir": str(BASE_CACHE_DIR),
+        "cache_policy": calculate_current_cache_cycle(),
+        "total_json_file_count": total_files,
+        "total_size_bytes": total_bytes,
+        "total_size_mb": round(total_bytes / (1024 * 1024), 3),
+        "folders": folders,
+    }
+
 def write_cache(
     category: str,
     key: str,
@@ -145,8 +224,7 @@ def write_cache(
     }
 
     try:
-        with path.open("w", encoding="utf-8") as handle:
-            json.dump(envelope, handle, ensure_ascii=False, indent=2)
+        _atomic_write_json(path, envelope)
     except Exception:
         # Cache persistence should never break the API response.
         pass
