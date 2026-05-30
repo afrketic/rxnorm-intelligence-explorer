@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 import math
 import html
@@ -330,25 +330,27 @@ def _prewarm_one_drug(drug_name: str, ndc_limit: int = 50, max_detail_nodes: int
     return result
 
 
-@app.post("/cache/prewarm")
-def prewarm_cache(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4):
+CACHE_PREWARM_STATUS = {
+    "status": "idle",
+    "message": "Cache prewarm has not started yet.",
+    "last_result": None,
+}
+
+
+def _run_cache_prewarm_sync(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4):
     """
-    Monthly cache prewarm endpoint for Render Cron Jobs.
+    Synchronous worker used by the background prewarm endpoint.
 
-    Intended cron command:
-    curl -X POST https://<render-backend-url>/cache/prewarm
-
-    What it warms:
-    - CMS Part D popular medication searches
-    - Light dashboard drug payloads
-    - Lazy NDC payloads
-    - Lazy graph payloads
-
-    Cache cycle policy:
-    - Refresh day is the 15th of each month.
-    - Before the 15th, the active cache cycle remains the prior month.
-    - On/after the 15th, this endpoint rebuilds missing/stale current-cycle caches.
+    This performs the expensive CMS/RxNorm/RxClass/NDC warming work outside
+    the HTTP response path so Render Cron receives a fast 200 response instead
+    of waiting on many external API calls.
     """
+
+    CACHE_PREWARM_STATUS.update({
+        "status": "running",
+        "message": "Monthly cache prewarm is running in the background.",
+        "last_result": None,
+    })
 
     safe_limit = max(1, min(int(limit or 5), 10))
     safe_ndc_limit = max(1, min(int(ndc_limit or 50), 250))
@@ -360,6 +362,7 @@ def prewarm_cache(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4
     errors = []
 
     try:
+        print("[CACHE PREWARM] Warming CMS trending drugs...")
         trending_result = trending_drugs(limit=safe_limit)
         for item in trending_result.get("trending_drugs", []) or []:
             drug_name = str(item.get("drug_name", "")).strip()
@@ -368,8 +371,6 @@ def prewarm_cache(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4
     except Exception as exc:
         errors.append(f"trending_drugs: {exc}")
 
-    # Always include fallback/strategic drugs so the dashboard's most common
-    # entry points are warm even when CMS is unavailable or returns sparse data.
     prewarm_drugs = []
     seen = set()
 
@@ -380,19 +381,21 @@ def prewarm_cache(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4
             seen.add(key)
             prewarm_drugs.append(cleaned)
 
-    drug_results = [
-        _prewarm_one_drug(
-            drug_name=name,
-            ndc_limit=safe_ndc_limit,
-            max_detail_nodes=safe_detail_limit,
+    drug_results = []
+    for name in prewarm_drugs:
+        print(f"[CACHE PREWARM] Warming {name}...")
+        drug_results.append(
+            _prewarm_one_drug(
+                drug_name=name,
+                ndc_limit=safe_ndc_limit,
+                max_detail_nodes=safe_detail_limit,
+            )
         )
-        for name in prewarm_drugs
-    ]
 
     warmed_successfully = sum(1 for item in drug_results if item.get("success"))
     failed = [item for item in drug_results if not item.get("success")]
 
-    return {
+    result = {
         "success": len(errors) == 0 and len(failed) == 0,
         "status": "completed",
         "message": "Monthly cache prewarm completed.",
@@ -406,6 +409,68 @@ def prewarm_cache(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4
         "drug_results": drug_results,
         "errors": errors,
     }
+
+    CACHE_PREWARM_STATUS.update({
+        "status": "completed" if result.get("success") else "completed_with_errors",
+        "message": result.get("message", "Monthly cache prewarm finished."),
+        "last_result": result,
+    })
+
+    print("[CACHE PREWARM] Completed.")
+    return result
+
+
+@app.post("/cache/prewarm")
+def prewarm_cache(background_tasks: BackgroundTasks, limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4):
+    """
+    Starts monthly cache prewarming in the background for Render Cron Jobs.
+
+    Intended cron command:
+    curl -X POST https://<render-backend-url>/cache/prewarm
+
+    This returns immediately so Render Cron does not hang while CMS/RxNorm,
+    RxClass, NDC, graph, and dashboard caches are being rebuilt.
+    """
+
+    if CACHE_PREWARM_STATUS.get("status") == "running":
+        return {
+            "success": True,
+            "status": "already_running",
+            "message": "Cache prewarm is already running in the background.",
+            "cache_policy": _monthly_cache_metadata(),
+        }
+
+    background_tasks.add_task(
+        _run_cache_prewarm_sync,
+        limit=limit,
+        ndc_limit=ndc_limit,
+        max_detail_nodes=max_detail_nodes,
+    )
+
+    CACHE_PREWARM_STATUS.update({
+        "status": "started",
+        "message": "Cache prewarm was accepted and will run in the background.",
+    })
+
+    return {
+        "success": True,
+        "status": "started",
+        "message": "Cache prewarm accepted. Background warming has started.",
+        "cache_policy": _monthly_cache_metadata(),
+        "refresh_day": MONTHLY_CACHE_REFRESH_DAY,
+    }
+
+
+@app.get("/cache/prewarm/status")
+def get_cache_prewarm_status():
+    """Returns the latest in-memory cache prewarm status for quick diagnostics."""
+    return CACHE_PREWARM_STATUS
+
+
+@app.post("/cache/prewarm/sync")
+def prewarm_cache_sync(limit: int = 5, ndc_limit: int = 50, max_detail_nodes: int = 4):
+    """Manual synchronous prewarm endpoint for local debugging only."""
+    return _run_cache_prewarm_sync(limit=limit, ndc_limit=ndc_limit, max_detail_nodes=max_detail_nodes)
 
 
 def _clean_tooltip_text(value):
