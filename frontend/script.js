@@ -756,6 +756,64 @@ async function ensureGraphLoaded() {
   }
 }
 
+function normalizeNdcCrosswalkShape(payload) {
+  /*
+    Supports every NDC payload shape currently used by the dashboard/backend:
+    - full drug payload:       { ndc_crosswalk: { ndc_records, ndc_count } }
+    - lazy NDC endpoint:       { ndc_records, ndc_count }
+    - generic list wrappers:   { records } / { data } / { results } / { ndcs } / { packages }
+    - nested payload wrappers: { payload: { ... } } / { data: { ... } }
+  */
+  const source = payload || {};
+  const nestedCrosswalk = source.ndc_crosswalk || source.ndcCrosswalk || null;
+  const nestedPayload = source.payload || null;
+
+  const candidateRecords = [
+    nestedCrosswalk?.ndc_records,
+    nestedCrosswalk?.records,
+    nestedCrosswalk?.data,
+    nestedCrosswalk?.results,
+    nestedCrosswalk?.ndcs,
+    nestedCrosswalk?.packages,
+    source.ndc_records,
+    source.records,
+    source.results,
+    source.ndcs,
+    source.packages,
+    Array.isArray(source.data) ? source.data : null,
+    nestedPayload?.ndc_crosswalk?.ndc_records,
+    nestedPayload?.ndc_records,
+    nestedPayload?.records,
+    nestedPayload?.results,
+  ].find(Array.isArray) || [];
+
+  const candidateCount = [
+    nestedCrosswalk?.ndc_count,
+    nestedCrosswalk?.count,
+    nestedCrosswalk?.total_count,
+    nestedCrosswalk?.total_records,
+    source.ndc_count,
+    source.count,
+    source.total_count,
+    source.total_records,
+    nestedPayload?.ndc_crosswalk?.ndc_count,
+    nestedPayload?.ndc_count,
+    candidateRecords.length,
+  ].find((value) => Number.isFinite(Number(value)) && Number(value) >= 0);
+
+  return {
+    ...(nestedCrosswalk || {}),
+    ...(source || {}),
+    ndc_records: candidateRecords,
+    ndc_count: Number(candidateCount || candidateRecords.length),
+    served_from_cache: Boolean(
+      source.served_from_cache ||
+      nestedCrosswalk?.served_from_cache ||
+      nestedPayload?.served_from_cache
+    ),
+  };
+}
+
 async function ensureNdcLoaded() {
   if (!currentDrugName || ndcLoading || ndcLoadedForDrug === currentDrugName) return;
 
@@ -767,9 +825,13 @@ async function ensureNdcLoaded() {
     const response = await fetch(`${API_BASE_URL}/ndc/${encodeURIComponent(currentDrugName)}?limit=50`);
     if (!response.ok) throw new Error(`NDC API error: ${response.status}`);
     const ndcPayload = await response.json();
+    const normalizedNdcCrosswalk = normalizeNdcCrosswalkShape(ndcPayload);
 
     if (currentPayload) {
-      currentPayload.ndc_crosswalk = ndcPayload;
+      currentPayload.ndc_crosswalk = {
+        ...(currentPayload.ndc_crosswalk || {}),
+        ...normalizedNdcCrosswalk,
+      };
       ndcLoadedForDrug = currentDrugName;
       renderSummaryMetrics(currentPayload);
       renderNdcCrosswalk(currentPayload);
@@ -787,22 +849,33 @@ async function ensureNdcLoaded() {
 
 function renderNdcCrosswalk(data) {
   const container = document.getElementById("ndcList");
+  if (!container) return;
+
   container.innerHTML = "";
-  const ndcItems = data.ndc_crosswalk?.ndc_records || [];
+  const normalizedNdcCrosswalk = normalizeNdcCrosswalkShape(data);
+  const ndcItems = normalizedNdcCrosswalk.ndc_records || [];
+
+  if (currentPayload) {
+    currentPayload.ndc_crosswalk = {
+      ...(currentPayload.ndc_crosswalk || {}),
+      ...normalizedNdcCrosswalk,
+    };
+  }
+
   if (ndcItems.length === 0) {
     container.innerHTML = '<div class="list-item">No NDC records returned.</div>';
     return;
   }
 
   const displayItems = ndcItems.slice(0, 50);
-  const totalCount = data.ndc_crosswalk?.ndc_count || ndcItems.length;
+  const totalCount = normalizedNdcCrosswalk.ndc_count || ndcItems.length;
 
   container.innerHTML = `<div class="list-item"><strong>Showing ${displayItems.length.toLocaleString()} of ${Number(totalCount).toLocaleString()} NDC records.</strong><div class="list-meta">Rendering is capped for dashboard performance. The backend can still retain the full payload in cache.</div></div>`;
 
   displayItems.forEach((item, index) => {
     const div = document.createElement("div");
     div.className = "list-item";
-    div.innerHTML = `<strong>${index + 1}. NDC11: ${escapeHtml(item.ndc11 || "N/A")}</strong><div class="list-meta">NDC10: ${escapeHtml(item.ndc10 || "N/A")} | NDC9: ${escapeHtml(item.ndc9 || "N/A")} | Clinical RxCUI: ${escapeHtml(item.clinical_drug_rxcui || item.rxcui || "N/A")}</div><div class="list-meta">Source: ${escapeHtml(item.source || "RxNorm Related NDC")}</div>`;
+    div.innerHTML = `<strong>${index + 1}. NDC11: ${escapeHtml(item.ndc11 || item.ndc_11 || item.ndc || "N/A")}</strong><div class="list-meta">NDC10: ${escapeHtml(item.ndc10 || item.ndc_10 || "N/A")} | NDC9: ${escapeHtml(item.ndc9 || item.ndc_9 || "N/A")} | Clinical RxCUI: ${escapeHtml(item.clinical_drug_rxcui || item.clinicalRxcui || item.rxcui || "N/A")}</div><div class="list-meta">Source: ${escapeHtml(item.source || "RxNorm Related NDC")}</div>`;
     container.appendChild(div);
   });
 }
