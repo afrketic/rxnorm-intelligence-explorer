@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://rxnorm-intelligence-explorer.onrender.com";
+const API_BASE_URL = "https://rxnorm-intelligence-explorer-1.onrender.com";
 
 const input = document.getElementById("drugInput");
 const button = document.getElementById("searchButton");
