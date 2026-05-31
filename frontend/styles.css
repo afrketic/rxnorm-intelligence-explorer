@@ -315,9 +315,6 @@
   box-shadow:none!important;
   filter:drop-shadow(0 12px 28px rgba(37,99,235,.18));
 }
-.hero-status-pill{
-  margin-top:2px;
-}
 .hero-content{
   max-width:1100px;
   margin:52px auto 30px;
@@ -402,15 +399,6 @@
   letter-spacing:.09em;
   text-transform:uppercase;
 }
-.popular-searches-header small{
-  color:#93c5fd;
-  background:rgba(37,99,235,.14);
-  border:1px solid rgba(96,165,250,.32);
-  border-radius:999px;
-  padding:7px 11px;
-  font-size:12px;
-  font-weight:800;
-}
 .popular-search-buttons{
   justify-content:center;
   margin-top:0;
@@ -437,14 +425,12 @@
   .hero.app-dashboard-hero{padding:20px 16px 26px;border-radius:22px}
   .brand-row{align-items:center}
   .brand-logo{width:min(250px,72vw)}
-  .hero-status-pill{display:none}
   .hero-content{margin:34px auto 24px}
   .hero-content h1{font-size:clamp(38px,11vw,52px)}
   .hero-search-card{padding:22px 18px 26px}
   .hero-search-card .search-row{display:block}
   .hero-search-card #searchButton{width:100%;margin-top:12px;min-width:0}
   .hero-search-card .search-header{display:block}
-  .hero-search-card .search-header .status-pill{margin-top:14px}
   .popular-search-buttons .example-btn{width:100%;margin-bottom:10px}
 }
 

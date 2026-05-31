@@ -6,7 +6,6 @@ const statusMessage = document.getElementById("statusMessage");
 const results = document.getElementById("results");
 const suggestionBox = document.getElementById("suggestionBox");
 const popularSearchButtons = document.getElementById("popularSearchButtons");
-const popularSearchSource = document.getElementById("popularSearchSource");
 
 let activeNetwork = null;
 let activeNodes = null;
@@ -203,7 +202,7 @@ function normalizeTrendingDrugName(item) {
   return item.drug_name || item.generic_name || item.brand_name || item.name || "";
 }
 
-function renderPopularSearches(drugs, sourceLabel = "CMS Medicare Part D claim volume") {
+function renderPopularSearches(drugs) {
   if (!popularSearchButtons) return;
 
   const names = (drugs || [])
@@ -218,12 +217,11 @@ function renderPopularSearches(drugs, sourceLabel = "CMS Medicare Part D claim v
     .map(name => `<button class="example-btn" type="button" data-drug-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`)
     .join("");
 
-  if (popularSearchSource) popularSearchSource.textContent = sourceLabel;
   bindPopularSearchButtons(popularSearchButtons);
 }
 
 async function loadPopularMedicationSearches() {
-  renderPopularSearches(FALLBACK_POPULAR_DRUGS, "Loading CMS Medicare Part D trends...");
+  renderPopularSearches(FALLBACK_POPULAR_DRUGS);
 
   try {
     const response = await fetch(`${API_BASE_URL}/trending-drugs?limit=5`);
@@ -232,13 +230,9 @@ async function loadPopularMedicationSearches() {
     const payload = await response.json();
     const drugs = payload.trending_drugs || payload.drugs || [];
 
-    const sourceLabel = payload.used_fallback
-      ? "Fallback list — CMS trends unavailable"
-      : `${payload.display_label || "Popular Medication Searches"} • ${payload.dataset_period || "latest CMS data"}`;
-
-    renderPopularSearches(drugs, sourceLabel);
+    renderPopularSearches(drugs);
   } catch (error) {
-    renderPopularSearches(FALLBACK_POPULAR_DRUGS, "Fallback list — CMS trends unavailable");
+    renderPopularSearches(FALLBACK_POPULAR_DRUGS);
   }
 }
 
