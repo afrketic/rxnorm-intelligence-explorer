@@ -326,8 +326,19 @@ def get_drug_ndc_intelligence(drug_name: str, limit: int = 50):
     payload = deepcopy(payload)
     payload["lazy_loaded"] = True
     payload["render_limit"] = safe_limit
-    full_records = payload.get("ndc_records", []) or []
-    payload["ndc_count"] = payload.get("ndc_count", len(full_records))
+    full_records = (
+        payload.get("ndc_records")
+        or payload.get("records")
+        or payload.get("data")
+        or payload.get("results")
+        or payload.get("ndc_crosswalk", {}).get("ndc_records")
+        or payload.get("payload", {}).get("ndc_records")
+        or payload.get("payload", {}).get("ndc_crosswalk", {}).get("ndc_records")
+        or []
+    )
+
+    payload["success"] = bool(full_records)
+    payload["ndc_count"] = payload.get("ndc_count") or len(full_records)
     payload["ndc_records"] = full_records[:safe_limit]
     return payload
 
