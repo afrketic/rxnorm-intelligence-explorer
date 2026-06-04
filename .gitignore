@@ -10,3 +10,4 @@ data_pipeline/
 database/
 backend/rxnorm_intelligence.db
 
+archive/
