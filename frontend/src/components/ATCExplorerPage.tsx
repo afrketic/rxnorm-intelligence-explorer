@@ -323,6 +323,101 @@ function normalizeDescendantLevels(atcData: AtcClassPayload | null) {
   return Array.isArray(levels) ? levels : [];
 }
 
+function normalizeLandscapeRows(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function getLandscapeMetric(item: any, key: string) {
+  return item?.[key] ?? item?.metrics?.[key] ?? null;
+}
+
+function formatDelta(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'Benchmark pending';
+  if (numeric === 0) return 'Even with selected class';
+  return `${numeric > 0 ? '+' : ''}${formatMetric(numeric)} vs selected`;
+}
+
+function formatSelectedDelta(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 'Comparison pending';
+  if (numeric === 0) return 'Selected class matches benchmark';
+  return `${numeric > 0 ? '+' : ''}${formatMetric(numeric)} selected vs benchmark`;
+}
+
+function LandscapeClassCard({ item, onSelectAtc }: { item: any; onSelectAtc?: (code: string) => void }) {
+  const code = clean(item?.code || item?.class_id, 'ATC');
+  const label = clean(item?.label || item?.class_name, code);
+  const avg = getLandscapeMetric(item, 'average_intelligence');
+  const count = item?.drug_count ?? item?.medication_count;
+  const delta = item?.intelligence_delta_vs_selected;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelectAtc?.(code)}
+      className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-left transition hover:border-cyan-300 hover:bg-cyan-950/20 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+    >
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Peer class</p>
+      <div className="mt-2 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-lg font-black text-white">{code}</p>
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{label}</p>
+        </div>
+        <ArrowRight className="mt-1 h-4 w-4 text-slate-600" />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2 py-1 text-[0.65rem] font-black text-cyan-100">
+          {formatMetric(count)} meds
+        </span>
+        <span className="rounded-full border border-emerald-300/20 bg-emerald-400/10 px-2 py-1 text-[0.65rem] font-black text-emerald-100">
+          Avg {formatMetric(avg)}
+        </span>
+      </div>
+      <p className="mt-2 text-[0.68rem] font-bold text-slate-500">{formatDelta(delta)}</p>
+    </button>
+  );
+}
+
+function BenchmarkCard({ item, title, onSelectAtc }: { item: any; title: string; onSelectAtc?: (code: string) => void }) {
+  if (!item) {
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{title}</p>
+        <p className="mt-3 text-sm text-slate-400">Benchmark not available for this ATC level yet.</p>
+      </div>
+    );
+  }
+
+  const code = clean(item?.code || item?.class_id, 'ATC');
+  const label = clean(item?.label || item?.class_name, code);
+  const avg = getLandscapeMetric(item, 'average_intelligence');
+  const count = item?.drug_count ?? item?.medication_count;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelectAtc?.(code)}
+      className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-left transition hover:border-purple-300 hover:bg-purple-950/20 focus:outline-none focus:ring-2 focus:ring-purple-300"
+    >
+      <p className="text-xs font-black uppercase tracking-[0.18em] text-purple-300">{title}</p>
+      <p className="mt-2 text-lg font-black text-white">{code}</p>
+      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{label}</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+          <p className="text-[0.65rem] font-bold text-slate-500">Avg intelligence</p>
+          <p className="mt-1 text-lg font-black text-white">{formatMetric(avg)}</p>
+        </div>
+        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+          <p className="text-[0.65rem] font-bold text-slate-500">Medication set</p>
+          <p className="mt-1 text-lg font-black text-white">{formatMetric(count)}</p>
+        </div>
+      </div>
+      <p className="mt-2 text-[0.68rem] font-bold text-purple-100">{formatSelectedDelta(item?.intelligence_delta_vs_selected)}</p>
+    </button>
+  );
+}
+
 function MetricCard({ label, value, helper, icon, contextBadge }: MetricCardProps) {
   return (
     <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-sm">
@@ -446,6 +541,15 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
   const rollupDescription = getRollupDescription(atcData, selectedCode, rollupScope);
   const descendantClassCount = atcData?.descendant_class_count ?? atcData?.hierarchy_analytics?.descendant_class_count ?? childRows.length;
   const descendantLevels = normalizeDescendantLevels(atcData);
+  const landscape = atcData?.landscape_intelligence || {};
+  const peerClasses = normalizeLandscapeRows(atcData?.peer_classes || atcData?.sibling_classes || landscape?.peer_classes || landscape?.sibling_classes);
+  const parentBenchmarks = normalizeLandscapeRows(atcData?.parent_benchmarks || landscape?.parent_benchmarks);
+  const categoryBenchmark = atcData?.category_benchmark || landscape?.category_benchmark || parentBenchmarks[parentBenchmarks.length - 1] || null;
+  const domainBenchmark = atcData?.domain_benchmark || landscape?.domain_benchmark || parentBenchmarks.find((item: any) => Number(item?.level) === 1) || null;
+  const landscapeSummary = clean(
+    landscape?.landscape_summary,
+    `Compares ${selectedCode} to peer ATC classes and parent therapeutic rollups.`
+  );
   const scrollToMedicationRankings = () => medicationRankingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   if (!drug || !selectedAtc) {
@@ -592,6 +696,44 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
           </div>
         ) : null}
       </div>
+
+      <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Therapeutic landscape intelligence</p>
+            <h3 className="mt-2 text-2xl font-black text-white">Peer classes and parent benchmarks</h3>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-400">{landscapeSummary}</p>
+          </div>
+          <span className="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-100">
+            {formatMetric(peerClasses.length)} peer classes
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Parent benchmarks</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+              <BenchmarkCard item={categoryBenchmark} title="Category benchmark" onSelectAtc={onSelectAtc} />
+              <BenchmarkCard item={domainBenchmark} title="Domain benchmark" onSelectAtc={onSelectAtc} />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Sibling / peer ATC classes</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {peerClasses.length > 0 ? (
+                peerClasses.slice(0, 6).map((item: any) => (
+                  <LandscapeClassCard key={item.code || item.class_id} item={item} onSelectAtc={onSelectAtc} />
+                ))
+              ) : (
+                <p className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
+                  Peer class analytics are not available for this ATC level yet.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Avg intelligence" value={avgOverall} helper={rollupDescription} icon={<Activity className="h-5 w-5" />} contextBadge={atcPercentileContext} />

@@ -6618,6 +6618,187 @@ def hydrate_atc_child_class_rollups(conn: sqlite3.Connection, children: List[Dic
     return hydrated
 
 
+def atc_parent_code_for_code(atc_code: str) -> Optional[str]:
+    """Return the immediate ATC parent code for a selected code."""
+    code = str(atc_code or "").strip().upper()
+    if len(code) >= 5:
+        return code[:4]
+    if len(code) == 4:
+        return code[:3]
+    if len(code) == 3:
+        return code[:1]
+    return None
+
+
+def atc_sibling_pattern(parent_code: str, selected_level: int) -> tuple[str, str] | None:
+    """Return SQL LIKE pattern and ATC class_type for sibling discovery."""
+    parent = str(parent_code or "").strip().upper()
+    class_type = ATC_TYPE_BY_LEVEL.get(selected_level)
+    if not parent or not class_type:
+        return None
+    return f"{parent}%", class_type
+
+
+def metric_delta(selected_value: Any, benchmark_value: Any) -> Optional[float]:
+    try:
+        selected = float(selected_value)
+        benchmark = float(benchmark_value)
+    except (TypeError, ValueError):
+        return None
+    return round(selected - benchmark, 1)
+
+
+def build_atc_rollup_summary(conn: sqlite3.Connection, atc_code: str, label: Optional[str] = None) -> Dict[str, Any]:
+    """Compact rollup summary used by parent benchmarks and sibling cards."""
+    code = str(atc_code or "").strip().upper()
+    if not code:
+        return {}
+
+    metrics = fetch_atc_class_rollup_metrics(conn, code)
+    return {
+        "code": code,
+        "class_id": code,
+        "label": label or get_atc_label(conn, code),
+        "class_name": label or get_atc_label(conn, code),
+        "level": atc_level_for_code(code),
+        "class_type": atc_type_for_code(code),
+        "rollup_scope": metrics.get("rollup_scope"),
+        "drug_count": metrics.get("medication_count"),
+        "medication_count": metrics.get("medication_count"),
+        "descendant_class_count": metrics.get("descendant_class_count"),
+        "average_intelligence": metrics.get("average_intelligence"),
+        "average_claims_readiness": metrics.get("average_claims_readiness"),
+        "average_ai_readiness": metrics.get("average_ai_readiness"),
+        "average_semantic_richness": metrics.get("average_semantic_richness"),
+        "average_interoperability": metrics.get("average_interoperability"),
+        "rollup_description": metrics.get("rollup_description"),
+    }
+
+
+def fetch_atc_sibling_classes(conn: sqlite3.Connection, atc_code: str, selected_metrics: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return peer/sibling classes at the same ATC level under the same parent."""
+    code = str(atc_code or "").strip().upper()
+    selected_level = atc_level_for_code(code)
+    parent_code = atc_parent_code_for_code(code)
+    pattern_info = atc_sibling_pattern(parent_code or "", selected_level)
+
+    if not parent_code or not pattern_info:
+        return []
+
+    pattern, class_type = pattern_info
+    rows = conn.execute(
+        """
+        SELECT
+            UPPER(CAST(class_id AS TEXT)) AS code,
+            COALESCE(class_name, class_id) AS label,
+            class_type,
+            COUNT(DISTINCT CAST(rxcui AS TEXT)) AS direct_drug_count
+        FROM research_classification_detail
+        WHERE UPPER(CAST(class_id AS TEXT)) LIKE ?
+          AND class_type = ?
+          AND UPPER(CAST(class_id AS TEXT)) <> ?
+        GROUP BY UPPER(CAST(class_id AS TEXT)), COALESCE(class_name, class_id), class_type
+        ORDER BY code ASC
+        LIMIT 50
+        """,
+        (pattern, class_type, code),
+    ).fetchall()
+
+    siblings = []
+    selected_avg = selected_metrics.get("average_intelligence")
+
+    for row in rows_to_dicts(rows):
+        sibling_code = str(row.get("code") or "").upper()
+        if not sibling_code:
+            continue
+        summary = build_atc_rollup_summary(conn, sibling_code, row.get("label"))
+        summary["relationship"] = "Sibling ATC class"
+        summary["parent_code"] = parent_code
+        summary["direct_drug_count"] = row.get("direct_drug_count")
+        summary["intelligence_delta_vs_selected"] = metric_delta(
+            summary.get("average_intelligence"),
+            selected_avg,
+        )
+        siblings.append(summary)
+
+    return sorted(
+        siblings,
+        key=lambda item: (
+            -(float(item.get("average_intelligence") or 0)),
+            str(item.get("code") or ""),
+        ),
+    )
+
+
+def build_atc_parent_benchmarks(
+    conn: sqlite3.Connection,
+    pathway: List[Dict[str, Any]],
+    selected_code: str,
+    selected_metrics: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """Return rollup benchmark metrics for parent classes in the selected ATC pathway."""
+    selected = str(selected_code or "").strip().upper()
+    selected_avg = selected_metrics.get("average_intelligence")
+    selected_claims = selected_metrics.get("average_claims_readiness")
+    selected_ai = selected_metrics.get("average_ai_readiness")
+    selected_semantic = selected_metrics.get("average_semantic_richness")
+
+    benchmarks = []
+    for node in pathway:
+        code = str(node.get("code") or node.get("class_id") or "").strip().upper()
+        if not code or code == selected:
+            continue
+        summary = build_atc_rollup_summary(conn, code, node.get("label") or node.get("class_name"))
+        summary["relationship"] = "Parent benchmark"
+        summary["selected_code"] = selected
+        summary["intelligence_delta_vs_selected"] = metric_delta(selected_avg, summary.get("average_intelligence"))
+        summary["claims_delta_vs_selected"] = metric_delta(selected_claims, summary.get("average_claims_readiness"))
+        summary["ai_delta_vs_selected"] = metric_delta(selected_ai, summary.get("average_ai_readiness"))
+        summary["semantic_delta_vs_selected"] = metric_delta(selected_semantic, summary.get("average_semantic_richness"))
+        benchmarks.append(summary)
+
+    return benchmarks
+
+
+def build_atc_landscape_intelligence(
+    conn: sqlite3.Connection,
+    atc_code: str,
+    pathway: List[Dict[str, Any]],
+    selected_metrics: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Sprint 3C therapeutic landscape intelligence for class comparisons."""
+    code = str(atc_code or "").strip().upper()
+    parent_code = atc_parent_code_for_code(code)
+    siblings = fetch_atc_sibling_classes(conn, code, selected_metrics)
+    parent_benchmarks = build_atc_parent_benchmarks(conn, pathway, code, selected_metrics)
+
+    parent_summary = None
+    if parent_code:
+        parent_summary = build_atc_rollup_summary(conn, parent_code)
+
+    category_benchmark = next((item for item in reversed(parent_benchmarks) if item.get("level") == max(atc_level_for_code(code) - 1, 1)), None)
+    domain_benchmark = next((item for item in parent_benchmarks if item.get("level") == 1), None)
+
+    return {
+        "selected_code": code,
+        "parent_code": parent_code,
+        "parent_summary": parent_summary,
+        "peer_classes": siblings,
+        "sibling_classes": siblings,
+        "parent_benchmarks": parent_benchmarks,
+        "category_benchmark": category_benchmark,
+        "domain_benchmark": domain_benchmark,
+        "peer_class_count": len(siblings),
+        "benchmark_count": len(parent_benchmarks),
+        "landscape_summary": (
+            f"Compares {code} against sibling ATC classes under {parent_code} and benchmarks it against parent therapeutic rollups."
+            if parent_code
+            else f"Compares {code} against available therapeutic-domain rollups."
+        ),
+        "landscape_version": "Sprint 3C therapeutic landscape intelligence",
+    }
+
+
 @app.get("/atc/{atc_code}", tags=["ATC Explorer"])
 def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) -> Dict[str, Any]:
     """
@@ -6670,6 +6851,14 @@ def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) 
         "rollup_scope": hierarchy_analytics.get("rollup_scope"),
     }
 
+    with get_connection() as conn:
+        landscape_intelligence = build_atc_landscape_intelligence(
+            conn=conn,
+            atc_code=code,
+            pathway=pathway,
+            selected_metrics=metrics,
+        )
+
     return {
         "atc_code": code,
         "code": code,
@@ -6699,6 +6888,12 @@ def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) 
         "top_drugs": top_drugs,
         "bottom_drugs": bottom_drugs,
         "drugs": drugs[:limit],
+        "landscape_intelligence": landscape_intelligence,
+        "peer_classes": landscape_intelligence.get("peer_classes", []),
+        "sibling_classes": landscape_intelligence.get("sibling_classes", []),
+        "parent_benchmarks": landscape_intelligence.get("parent_benchmarks", []),
+        "category_benchmark": landscape_intelligence.get("category_benchmark"),
+        "domain_benchmark": landscape_intelligence.get("domain_benchmark"),
         "aggregation_source": "backend_sqlite_atc_prefix_aggregation",
         "aggregation_version": "Sprint 3B hierarchy rollup aggregation",
     }

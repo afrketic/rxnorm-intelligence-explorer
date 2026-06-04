@@ -107,6 +107,12 @@ export type AtcClassPayload = {
   metrics?: Record<string, any>;
   hierarchy_analytics?: Record<string, any>;
   descendant_levels?: AtcClassNode[] | Record<string, any>[];
+  landscape_intelligence?: Record<string, any>;
+  peer_classes?: AtcClassNode[];
+  sibling_classes?: AtcClassNode[];
+  parent_benchmarks?: AtcClassNode[];
+  category_benchmark?: AtcClassNode | null;
+  domain_benchmark?: AtcClassNode | null;
   rollup_scope?: string;
   rollup_mode?: string;
   rollup_description?: string;
