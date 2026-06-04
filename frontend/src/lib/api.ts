@@ -75,3 +75,51 @@ export async function getDrug(rxcui: string) {
 export async function getTable(tableName: string, limit = 100) {
   return requestJson<any[]>(`/tables/${encodeURIComponent(tableName)}?limit=${limit}`);
 }
+
+export type AtcClassDrug = DrugCard & {
+  matching_class_count?: number;
+};
+
+export type AtcClassNode = {
+  code?: string;
+  class_id?: string;
+  label?: string;
+  class_name?: string;
+  level?: number;
+  class_type?: string;
+  drug_count?: number;
+  [key: string]: any;
+};
+
+export type AtcClassPayload = {
+  atc_code: string;
+  code?: string;
+  class_id?: string;
+  atc_name?: string;
+  class_name?: string;
+  label?: string;
+  level?: number;
+  class_type?: string;
+  parent_pathway?: AtcClassNode[];
+  pathway?: AtcClassNode[];
+  children?: AtcClassNode[];
+  child_classes?: AtcClassNode[];
+  metrics?: Record<string, any>;
+  drug_count?: number;
+  average_intelligence?: number | null;
+  average_claims_readiness?: number | null;
+  average_ai_readiness?: number | null;
+  average_semantic_richness?: number | null;
+  average_interoperability?: number | null;
+  top_drugs?: AtcClassDrug[];
+  bottom_drugs?: AtcClassDrug[];
+  drugs?: AtcClassDrug[];
+  aggregation_source?: string;
+  aggregation_version?: string;
+  [key: string]: any;
+};
+
+export async function getAtcClass(atcCode: string, limit = 25) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return requestJson<AtcClassPayload>(`/atc/${encodeURIComponent(String(atcCode))}?${params.toString()}`);
+}

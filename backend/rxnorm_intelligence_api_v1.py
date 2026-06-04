@@ -6316,6 +6316,267 @@ def get_white_paper_appendix():
         ).fetchall()
     return rows_to_dicts(rows)
 
+
+
+# -----------------------------------------------------------------------------
+# ATC Explorer endpoints
+# -----------------------------------------------------------------------------
+
+ATC_LEVEL_LENGTHS = [1, 3, 4, 5, 7]
+ATC_LEVEL_BY_LENGTH = {1: 1, 3: 2, 4: 3, 5: 4, 7: 5}
+ATC_TYPE_BY_LEVEL = {1: "ATC1", 2: "ATC2", 3: "ATC3", 4: "ATC4", 5: "ATC5"}
+
+ATC_NAME_FALLBACKS = {
+    "A": "Alimentary Tract and Metabolism",
+    "A10": "Drugs Used in Diabetes",
+    "A10B": "Blood Glucose Lowering Drugs, Excluding Insulins",
+    "A10BJ": "Glucagon-like Peptide-1 (GLP-1) Analogues",
+    "C": "Cardiovascular System",
+    "M": "Musculo-Skeletal System",
+    "M01": "Anti-inflammatory and Antirheumatic Products",
+    "M01A": "Anti-inflammatory and Antirheumatic Products, Non-Steroids",
+    "M01AE": "Propionic Acid Derivatives",
+    "N": "Nervous System",
+    "R": "Respiratory System",
+    "G": "Genito Urinary System and Sex Hormones",
+    "J": "Antiinfectives for Systemic Use",
+}
+
+
+def atc_level_for_code(atc_code: str) -> int:
+    code = str(atc_code or "").strip().upper()
+    return ATC_LEVEL_BY_LENGTH.get(len(code), max(1, min(5, len(code))))
+
+
+def atc_type_for_code(atc_code: str) -> str:
+    return ATC_TYPE_BY_LEVEL.get(atc_level_for_code(atc_code), "ATC")
+
+
+def get_atc_label(conn: sqlite3.Connection, atc_code: str) -> str:
+    code = str(atc_code or "").strip().upper()
+    if not code:
+        return "ATC class"
+
+    if table_exists(conn, "research_classification_detail"):
+        row = conn.execute(
+            """
+            SELECT class_name
+            FROM research_classification_detail
+            WHERE UPPER(CAST(class_id AS TEXT)) = ?
+              AND class_name IS NOT NULL
+              AND TRIM(class_name) <> ''
+            GROUP BY class_name
+            ORDER BY COUNT(*) DESC, class_name ASC
+            LIMIT 1
+            """,
+            (code,),
+        ).fetchone()
+        if row and row["class_name"]:
+            return str(row["class_name"])
+
+    return ATC_NAME_FALLBACKS.get(code, code)
+
+
+def build_atc_parent_pathway(conn: sqlite3.Connection, atc_code: str) -> List[Dict[str, Any]]:
+    code = str(atc_code or "").strip().upper()
+    prefixes = [code[:length] for length in ATC_LEVEL_LENGTHS if len(code) >= length]
+    seen = []
+    for prefix in prefixes:
+        if prefix and prefix not in seen:
+            seen.append(prefix)
+
+    return [
+        {
+            "code": prefix,
+            "class_id": prefix,
+            "label": get_atc_label(conn, prefix),
+            "class_name": get_atc_label(conn, prefix),
+            "level": atc_level_for_code(prefix),
+            "class_type": atc_type_for_code(prefix),
+        }
+        for prefix in seen
+    ]
+
+
+def score_average(rows: List[Dict[str, Any]], column: str) -> Optional[float]:
+    values = []
+    for row in rows:
+        value = row.get(column)
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            continue
+        if pd.notna(numeric):
+            values.append(numeric)
+    if not values:
+        return None
+    return round(sum(values) / len(values), 1)
+
+
+def fetch_atc_drug_rows(conn: sqlite3.Connection, atc_code: str, limit: int = 5000) -> List[Dict[str, Any]]:
+    code = str(atc_code or "").strip().upper()
+    if not code:
+        return []
+
+    validate_table(conn, "research_classification_detail")
+    validate_table(conn, "drug_intelligence_master_v1")
+
+    rows = conn.execute(
+        """
+        SELECT
+            CAST(m.rxcui AS TEXT) AS rxcui,
+            COALESCE(m.rxnorm_name, m.drug_name, CAST(m.rxcui AS TEXT)) AS drug_name,
+            COALESCE(m.rxnorm_name, m.drug_name, CAST(m.rxcui AS TEXT)) AS display_name,
+            COALESCE(m.tty, m.term_type, '') AS tty,
+            m.benchmark_tier,
+            CAST(m.overall_intelligence_score AS REAL) AS overall_intelligence_score,
+            CAST(m.claims_readiness_score AS REAL) AS claims_readiness_score,
+            CAST(m.ai_readiness_score AS REAL) AS ai_readiness_score,
+            CAST(m.semantic_richness_score AS REAL) AS semantic_richness_score,
+            CAST(m.interoperability_score AS REAL) AS interoperability_score,
+            CAST(m.clinical_semantics_score AS REAL) AS clinical_semantics_score,
+            COUNT(DISTINCT c.class_id) AS matching_class_count
+        FROM research_classification_detail c
+        JOIN drug_intelligence_master_v1 m
+          ON CAST(m.rxcui AS TEXT) = CAST(c.rxcui AS TEXT)
+        WHERE UPPER(CAST(c.class_id AS TEXT)) LIKE ?
+          AND c.class_type LIKE 'ATC%'
+        GROUP BY CAST(m.rxcui AS TEXT)
+        ORDER BY
+            CAST(m.overall_intelligence_score AS REAL) DESC,
+            LOWER(COALESCE(m.rxnorm_name, m.drug_name, CAST(m.rxcui AS TEXT))) ASC
+        LIMIT ?
+        """,
+        (f"{code}%", limit),
+    ).fetchall()
+
+    return rows_to_dicts(rows)
+
+
+def fetch_atc_child_classes(conn: sqlite3.Connection, atc_code: str) -> List[Dict[str, Any]]:
+    code = str(atc_code or "").strip().upper()
+    current_level = atc_level_for_code(code)
+    next_level = current_level + 1
+    next_type = ATC_TYPE_BY_LEVEL.get(next_level)
+
+    if not next_type or not table_exists(conn, "research_classification_detail"):
+        return []
+
+    rows = conn.execute(
+        """
+        SELECT
+            UPPER(CAST(class_id AS TEXT)) AS code,
+            COALESCE(class_name, class_id) AS label,
+            class_type,
+            COUNT(DISTINCT CAST(rxcui AS TEXT)) AS drug_count
+        FROM research_classification_detail
+        WHERE UPPER(CAST(class_id AS TEXT)) LIKE ?
+          AND class_type = ?
+          AND UPPER(CAST(class_id AS TEXT)) <> ?
+        GROUP BY UPPER(CAST(class_id AS TEXT)), COALESCE(class_name, class_id), class_type
+        ORDER BY code ASC, drug_count DESC
+        LIMIT 50
+        """,
+        (f"{code}%", next_type, code),
+    ).fetchall()
+
+    children = []
+    seen = set()
+    for row in rows_to_dicts(rows):
+        child_code = str(row.get("code") or "").upper()
+        if not child_code or child_code in seen:
+            continue
+        seen.add(child_code)
+        children.append(
+            {
+                "code": child_code,
+                "class_id": child_code,
+                "label": row.get("label") or child_code,
+                "class_name": row.get("label") or child_code,
+                "level": atc_level_for_code(child_code),
+                "class_type": row.get("class_type") or atc_type_for_code(child_code),
+                "drug_count": row.get("drug_count"),
+            }
+        )
+    return children
+
+
+@app.get("/atc/{atc_code}", tags=["ATC Explorer"])
+def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) -> Dict[str, Any]:
+    """
+    Real class-level ATC aggregation for the ATC Explorer.
+
+    Aggregates all medications mapped to the selected ATC code prefix and returns
+    class averages, top/bottom medication cohorts, parent pathway, and child classes.
+    """
+    code = str(atc_code or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="ATC code is required")
+
+    with get_connection() as conn:
+        validate_table(conn, "research_classification_detail")
+        validate_table(conn, "drug_intelligence_master_v1")
+
+        label = get_atc_label(conn, code)
+        pathway = build_atc_parent_pathway(conn, code)
+        children = fetch_atc_child_classes(conn, code)
+        drugs = fetch_atc_drug_rows(conn, code, limit=5000)
+
+    top_drugs = sorted(
+        drugs,
+        key=lambda item: (float(item.get("overall_intelligence_score") or 0), str(item.get("drug_name") or "").lower()),
+        reverse=True,
+    )[:limit]
+
+    bottom_drugs = sorted(
+        drugs,
+        key=lambda item: (float(item.get("overall_intelligence_score") or 0), str(item.get("drug_name") or "").lower()),
+    )[:limit]
+
+    metrics = {
+        "drug_count": len(drugs),
+        "average_intelligence": score_average(drugs, "overall_intelligence_score"),
+        "average_overall_intelligence_score": score_average(drugs, "overall_intelligence_score"),
+        "average_claims_readiness": score_average(drugs, "claims_readiness_score"),
+        "average_claims_readiness_score": score_average(drugs, "claims_readiness_score"),
+        "average_ai_readiness": score_average(drugs, "ai_readiness_score"),
+        "average_ai_readiness_score": score_average(drugs, "ai_readiness_score"),
+        "average_semantic_richness": score_average(drugs, "semantic_richness_score"),
+        "average_semantic_richness_score": score_average(drugs, "semantic_richness_score"),
+        "average_interoperability": score_average(drugs, "interoperability_score"),
+        "average_interoperability_score": score_average(drugs, "interoperability_score"),
+        "average_clinical_semantics": score_average(drugs, "clinical_semantics_score"),
+        "average_clinical_semantics_score": score_average(drugs, "clinical_semantics_score"),
+    }
+
+    return {
+        "atc_code": code,
+        "code": code,
+        "class_id": code,
+        "atc_name": label,
+        "class_name": label,
+        "label": label,
+        "level": atc_level_for_code(code),
+        "class_type": atc_type_for_code(code),
+        "parent_pathway": pathway,
+        "pathway": pathway,
+        "children": children,
+        "child_classes": children,
+        "metrics": metrics,
+        "drug_count": len(drugs),
+        "average_intelligence": metrics["average_intelligence"],
+        "average_claims_readiness": metrics["average_claims_readiness"],
+        "average_ai_readiness": metrics["average_ai_readiness"],
+        "average_semantic_richness": metrics["average_semantic_richness"],
+        "average_interoperability": metrics["average_interoperability"],
+        "top_drugs": top_drugs,
+        "bottom_drugs": bottom_drugs,
+        "drugs": drugs[:limit],
+        "aggregation_source": "backend_sqlite_atc_prefix_aggregation",
+        "aggregation_version": "Sprint 3A real ATC aggregation",
+    }
+
+
 # -----------------------------------------------------------------------------
 # Generic table endpoint for internal testing
 # -----------------------------------------------------------------------------
