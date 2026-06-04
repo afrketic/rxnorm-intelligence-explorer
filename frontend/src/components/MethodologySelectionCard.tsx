@@ -51,11 +51,11 @@ function prettyMethod(method?: string) {
 
 function tierStyle(tier?: string) {
   const normalized = (tier || '').toLowerCase();
-  if (normalized.includes('gold')) return 'border-slate-300 bg-slate-950 text-white';
-  if (normalized.includes('enterprise')) return 'border-blue-200 bg-blue-50 text-blue-900';
-  if (normalized.includes('recommended')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
-  if (normalized.includes('experimental')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  if (normalized.includes('gold')) return 'border-slate-700 bg-slate-950 text-white';
+  if (normalized.includes('enterprise')) return 'border-blue-800 bg-blue-950/50 text-blue-100';
+  if (normalized.includes('recommended')) return 'border-emerald-800 bg-emerald-950/40 text-emerald-100';
+  if (normalized.includes('experimental')) return 'border-amber-800 bg-amber-950/40 text-amber-100';
+  return 'border-slate-800 bg-slate-900/70 text-slate-300';
 }
 
 export default function MethodologySelectionCard({ drug }: Props) {
@@ -123,7 +123,7 @@ export default function MethodologySelectionCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-blue-900/40 bg-slate-950/85 shadow-sm shadow-blue-950/30">
       <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -139,7 +139,7 @@ export default function MethodologySelectionCard({ drug }: Props) {
           </div>
 
           {payload && (
-            <div className="rounded-3xl border border-white/10 bg-white/10 px-6 py-5 text-right backdrop-blur">
+            <div className="rounded-3xl border border-white/10 bg-slate-950/80/10 px-6 py-5 text-right backdrop-blur">
               <p className="text-xs font-bold uppercase tracking-wide text-indigo-100">
                 Winning Methodology
               </p>
@@ -158,13 +158,13 @@ export default function MethodologySelectionCard({ drug }: Props) {
       </div>
 
       {loading && (
-        <div className="p-7 text-sm font-semibold text-slate-500">
+        <div className="p-7 text-sm font-semibold text-slate-400">
           Loading methodology selection profile…
         </div>
       )}
 
       {error && (
-        <div className="m-7 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700">
+        <div className="m-7 rounded-2xl border border-rose-800 bg-rose-950/40 p-5 text-sm font-semibold text-rose-700">
           {error}
         </div>
       )}
@@ -178,19 +178,19 @@ export default function MethodologySelectionCard({ drug }: Props) {
             <MetricTile label="Percentile" value={`${formatScore(payload.selection.methodology_selection_percentile)}%`} />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <h3 className="text-base font-black text-slate-950">Selection Reason</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+          <div className="mt-5 rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
+            <h3 className="text-base font-black text-white">Selection Reason</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
               {payload.selection.selection_reason}
             </p>
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-black text-slate-950">Methodology Comparison</h3>
-              <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
+              <h3 className="text-base font-black text-white">Methodology Comparison</h3>
+              <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <thead className="bg-slate-900/70 text-xs uppercase tracking-wide text-slate-400">
                     <tr>
                       <th className="px-4 py-3">Method</th>
                       <th className="px-4 py-3">Selection Score</th>
@@ -199,10 +199,10 @@ export default function MethodologySelectionCard({ drug }: Props) {
                   </thead>
                   <tbody>
                     {comparisonRows.map(([method, selectionScore, rawScore]) => (
-                      <tr key={String(method)} className="border-t border-slate-200">
-                        <td className="px-4 py-3 font-black text-slate-950">{method}</td>
-                        <td className="px-4 py-3 text-slate-700">{formatScore(selectionScore)}</td>
-                        <td className="px-4 py-3 text-slate-700">{formatScore(rawScore)}</td>
+                      <tr key={String(method)} className="border-t border-slate-800">
+                        <td className="px-4 py-3 font-black text-white">{method}</td>
+                        <td className="px-4 py-3 text-slate-300">{formatScore(selectionScore)}</td>
+                        <td className="px-4 py-3 text-slate-300">{formatScore(rawScore)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -210,16 +210,16 @@ export default function MethodologySelectionCard({ drug }: Props) {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-black text-slate-950">Reason Codes</h3>
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
+              <h3 className="text-base font-black text-white">Reason Codes</h3>
               <div className="mt-4 space-y-3">
                 {payload.reason_codes.slice(0, 7).map((reason) => (
-                  <div key={reason.reason_code} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div key={reason.reason_code} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="font-black text-slate-950">{reason.reason_code}</p>
-                      <span className="text-sm font-black text-slate-900">{formatScore(reason.reason_score)}</span>
+                      <p className="font-black text-white">{reason.reason_code}</p>
+                      <span className="text-sm font-black text-white">{formatScore(reason.reason_score)}</span>
                     </div>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">{reason.reason_description}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{reason.reason_description}</p>
                   </div>
                 ))}
               </div>
@@ -233,15 +233,15 @@ export default function MethodologySelectionCard({ drug }: Props) {
             <MetricTile label="Regression R²" value={formatScore(payload.validation_signals.regression_model_r2)} />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Top Methodology Selection Assets</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
+            <h3 className="text-base font-black text-white">Top Methodology Selection Assets</h3>
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {topRows.map((item) => (
-                <div key={item.rxcui} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="font-black text-slate-950">
+                <div key={item.rxcui} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+                  <p className="font-black text-white">
                     #{item.methodology_selection_rank} · {item.display_name}
                   </p>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <p className="mt-1 text-sm text-slate-300">
                     {item.methodology_selection_tier} · {formatScore(item.methodology_selection_score)} · winner: {item.winning_methodology}
                   </p>
                 </div>
@@ -249,12 +249,12 @@ export default function MethodologySelectionCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Methodology</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+          <div className="mt-5 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
+            <h3 className="text-base font-black text-white">Methodology</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
               {payload.methodology.selection_methodology}
             </p>
-            <p className="mt-3 text-xs font-semibold text-slate-500">
+            <p className="mt-3 text-xs font-semibold text-slate-400">
               Version: {payload.methodology.selection_version} · Built: {payload.methodology.build_timestamp}
             </p>
           </div>
@@ -266,9 +266,9 @@ export default function MethodologySelectionCard({ drug }: Props) {
 
 function MetricTile({ label, value }: { label: string | number; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-2 text-lg font-black text-white">{value}</p>
     </div>
   );
 }

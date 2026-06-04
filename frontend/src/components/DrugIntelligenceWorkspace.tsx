@@ -23,14 +23,15 @@ import PortfolioOptimizationCard from './PortfolioOptimizationCard';
 import AICopilotCard from './AICopilotCard';
 import ProductionHardeningCard from './ProductionHardeningCard';
 import MethodologySelectionCard from './MethodologySelectionCard';
+import ClaimsReadinessDashboard from './ClaimsReadinessDashboard';
+import AIReadinessDashboard from './AIReadinessDashboard';
 
 type WorkspaceTab =
   | 'overview'
-  | 'clinical'
-  | 'knowledge'
+  | 'claims'
   | 'ai'
-  | 'executive'
-  | 'production';
+  | 'clinical'
+  | 'knowledge';
 
 type Props = {
   drug: (DrugCard & Record<string, any>) | null;
@@ -43,11 +44,10 @@ const WORKSPACE_TABS: Array<{
   description: string;
 }> = [
   { id: 'overview', label: 'Overview', description: 'Executive snapshot + medication identity' },
-  { id: 'clinical', label: 'Clinical', description: 'ATC, disease, MOA, EPC, and peers' },
+  { id: 'claims', label: 'Claims Readiness', description: 'Enterprise analytics readiness' },
+  { id: 'ai', label: 'AI Readiness', description: 'Explainability, semantic richness, confidence, methods' },
+  { id: 'clinical', label: 'Clinical Intelligence', description: 'ATC, disease, MOA, EPC, and peers' },
   { id: 'knowledge', label: 'Knowledge Graph', description: 'Graph structure + RxNorm relationships' },
-  { id: 'ai', label: 'AI Intelligence', description: 'Explainability, readiness, confidence, methods' },
-  { id: 'executive', label: 'Executive', description: 'Portfolio, leaderboards, and recommendations' },
-  { id: 'production', label: 'Production', description: 'Deployment, validation, and publication readiness' },
 ];
 
 function EmptyState() {
@@ -107,33 +107,49 @@ export default function DrugIntelligenceWorkspace({ drug, onSelectSimilarDrug }:
       </div>
 
       {activeTab === 'overview' && (
-        <SafeCardBoundary title="Medication Intelligence Profile">
-          <MedicationIntelligenceSummaryCard drug={drug} />
-        </SafeCardBoundary>
-      )}
-
-      {activeTab === 'clinical' && (
-        <SafeCardBoundary title="Clinical + Classification Intelligence">
-          <ClassificationPanel
-            drug={drug}
-            onSelectSimilarDrug={(similarDrug) => onSelectSimilarDrug?.(similarDrug as DrugCard)}
-          />
-        </SafeCardBoundary>
-      )}
-
-      {activeTab === 'knowledge' && (
         <>
-          <SafeCardBoundary title="Knowledge Graph Intelligence" subtitle="Clinical domains • classifications • relationships">
-            <GraphPanel drug={drug} />
+          <SafeCardBoundary title="Medication Intelligence Profile">
+            <MedicationIntelligenceSummaryCard drug={drug} />
           </SafeCardBoundary>
-          <SafeCardBoundary title="RxNorm Relationship Intelligence">
-            <RelationshipPanel drug={drug} />
+
+          <SafeCardBoundary title="Executive Portfolio Ranking">
+            <ExecutivePortfolioCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Executive Leaderboards">
+            <ExecutiveLeaderboardsCard />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Executive Recommendation Engine">
+            <ExecutiveRecommendationCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Production Candidate Ranking">
+            <ProductionCandidateCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Strategic Opportunity Engine">
+            <StrategicOpportunityCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Portfolio Optimization Engine">
+            <PortfolioOptimizationCard drug={drug} />
           </SafeCardBoundary>
         </>
       )}
 
+      {activeTab === 'claims' && (
+        <SafeCardBoundary title="Claims Readiness Dashboard">
+          <ClaimsReadinessDashboard drug={drug} />
+        </SafeCardBoundary>
+      )}
+
       {activeTab === 'ai' && (
         <>
+          <SafeCardBoundary title="AI Readiness Dashboard">
+            <AIReadinessDashboard drug={drug} />
+          </SafeCardBoundary>
+
           <SafeCardBoundary title="Explainability Engine">
             <ExplainabilityEngineCard drug={drug} />
           </SafeCardBoundary>
@@ -152,36 +168,28 @@ export default function DrugIntelligenceWorkspace({ drug, onSelectSimilarDrug }:
           <SafeCardBoundary title="Methodology Selection Engine">
             <MethodologySelectionCard drug={drug} />
           </SafeCardBoundary>
-        </>
-      )}
-
-      {activeTab === 'executive' && (
-        <>
-          <SafeCardBoundary title="Executive Portfolio Ranking">
-            <ExecutivePortfolioCard drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="Executive Leaderboards">
-            <ExecutiveLeaderboardsCard />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="Executive Recommendation Engine">
-            <ExecutiveRecommendationCard drug={drug} />
-          </SafeCardBoundary>
           <SafeCardBoundary title="AI Copilot Brief">
             <AICopilotCard drug={drug} />
           </SafeCardBoundary>
         </>
       )}
 
-      {activeTab === 'production' && (
+      {activeTab === 'clinical' && (
+        <SafeCardBoundary title="Clinical + Classification Intelligence">
+          <ClassificationPanel
+            drug={drug}
+            onSelectSimilarDrug={(similarDrug) => onSelectSimilarDrug?.(similarDrug as DrugCard)}
+          />
+        </SafeCardBoundary>
+      )}
+
+      {activeTab === 'knowledge' && (
         <>
-          <SafeCardBoundary title="Production Candidate Ranking">
-            <ProductionCandidateCard drug={drug} />
+          <SafeCardBoundary title="Knowledge Graph Intelligence" subtitle="Clinical domains • classifications • relationships">
+            <GraphPanel drug={drug} />
           </SafeCardBoundary>
-          <SafeCardBoundary title="Strategic Opportunity Engine">
-            <StrategicOpportunityCard drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="Portfolio Optimization Engine">
-            <PortfolioOptimizationCard drug={drug} />
+          <SafeCardBoundary title="RxNorm Relationship Intelligence">
+            <RelationshipPanel drug={drug} />
           </SafeCardBoundary>
           <SafeCardBoundary title="Enterprise Deployment Layer">
             <EnterpriseDeploymentCard drug={drug} />

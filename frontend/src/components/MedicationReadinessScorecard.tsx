@@ -63,11 +63,11 @@ function formatPercent(value: unknown) {
 
 function tierStyle(tier?: string) {
   const normalized = (tier || '').toLowerCase();
-  if (normalized.includes('elite')) return 'border-slate-300 bg-slate-950 text-white';
-  if (normalized.includes('advanced')) return 'border-blue-200 bg-blue-50 text-blue-900';
-  if (normalized.includes('established')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
-  if (normalized.includes('emerging')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  if (normalized.includes('elite')) return 'border-slate-700 bg-slate-950 text-white';
+  if (normalized.includes('advanced')) return 'border-blue-800 bg-blue-950/50 text-blue-100';
+  if (normalized.includes('established')) return 'border-emerald-800 bg-emerald-950/40 text-emerald-100';
+  if (normalized.includes('emerging')) return 'border-amber-800 bg-amber-950/40 text-amber-100';
+  return 'border-slate-800 bg-slate-900/70 text-slate-300';
 }
 
 export default function MedicationReadinessScorecard({ drug }: Props) {
@@ -136,7 +136,7 @@ export default function MedicationReadinessScorecard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-blue-900/40 bg-slate-950/85 shadow-sm shadow-blue-950/30">
       <div className="bg-gradient-to-br from-slate-950 to-slate-800 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -153,7 +153,7 @@ export default function MedicationReadinessScorecard({ drug }: Props) {
           </div>
 
           {payload && (
-            <div className="rounded-3xl border border-white/10 bg-white/10 px-6 py-5 text-right backdrop-blur">
+            <div className="rounded-3xl border border-white/10 bg-slate-950/80/10 px-6 py-5 text-right backdrop-blur">
               <p className="text-xs font-bold uppercase tracking-wide text-slate-300">
                 Overall Readiness
               </p>
@@ -169,13 +169,13 @@ export default function MedicationReadinessScorecard({ drug }: Props) {
       </div>
 
       {loading && (
-        <div className="p-6 text-sm font-semibold text-slate-500">
+        <div className="p-6 text-sm font-semibold text-slate-400">
           Loading readiness scores…
         </div>
       )}
 
       {error && (
-        <div className="m-6 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700">
+        <div className="m-6 rounded-2xl border border-rose-800 bg-rose-950/40 p-5 text-sm font-semibold text-rose-700">
           {error}
         </div>
       )}
@@ -206,29 +206,29 @@ export default function MedicationReadinessScorecard({ drug }: Props) {
           </div>
 
           <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_0.8fr]">
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-black text-slate-950">Readiness Domain Comparison</h3>
-              <p className="mt-1 text-sm text-slate-500">
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
+              <h3 className="text-base font-black text-white">Readiness Domain Comparison</h3>
+              <p className="mt-1 text-sm text-slate-400">
                 Score and percentile by readiness construct.
               </p>
 
               <div className="mt-5 h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={scoreRows}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="domain" />
-                    <YAxis domain={[0, 100]} />
-                    <Tooltip />
-                    <Bar dataKey="score" name="Score" radius={[10, 10, 0, 0]} />
-                    <Bar dataKey="percentile" name="Percentile" radius={[10, 10, 0, 0]} />
+                    <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                    <XAxis dataKey="domain"  tick={{ fill: "#94a3b8" }} />
+                    <YAxis domain={[0, 100]}  tick={{ fill: "#94a3b8" }} />
+                    <Tooltip  contentStyle={{ backgroundColor: "#020617", border: "1px solid #1e3a8a", borderRadius: "16px", color: "#e2e8f0" }} labelStyle={{ color: "#bfdbfe" }} />
+                    <Bar dataKey="score" name="Score" radius={[10, 10, 0, 0]}  fill="#38bdf8" />
+                    <Bar dataKey="percentile" name="Percentile" radius={[10, 10, 0, 0]}  fill="#38bdf8" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-              <h3 className="text-base font-black text-slate-950">Methodology</h3>
-              <p className="mt-3 text-sm leading-6 text-slate-600">
+            <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
+              <h3 className="text-base font-black text-white">Methodology</h3>
+              <p className="mt-3 text-sm leading-6 text-slate-300">
                 This is the first expert-weighted baseline readiness model. Later sprints will compare
                 this model against PCA, EFA, regression, AHP, bootstrap, and sensitivity-tested alternatives.
               </p>
@@ -256,10 +256,10 @@ function ScoreTile({
   percentile: number;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-black text-slate-950">{formatScore(score)}</p>
-      <p className="mt-1 text-xs font-semibold text-slate-500">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="mt-2 text-3xl font-black text-white">{formatScore(score)}</p>
+      <p className="mt-1 text-xs font-semibold text-slate-400">
         {formatPercent(percentile)} percentile
       </p>
     </div>
@@ -268,9 +268,9 @@ function ScoreTile({
 
 function MetaRow({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</span>
-      <span className="text-sm font-black text-slate-950">{value || '—'}</span>
+    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-3">
+      <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-sm font-black text-white">{value || '—'}</span>
     </div>
   );
 }
