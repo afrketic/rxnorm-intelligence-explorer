@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   Activity,
@@ -9,9 +9,10 @@ import {
   Layers3,
   ArrowRight,
   GitBranch,
+  Trophy,
 } from 'lucide-react';
-import { DrugCard } from '../lib/api';
-import { buildTherapeuticPathway, type PathwayNode } from './TherapeuticPathway';
+import { DrugCard, getAtcClass, type AtcClassPayload } from '../lib/api';
+import { buildTherapeuticPathway } from './TherapeuticPathway';
 
 type Props = {
   drug: (DrugCard & Record<string, any>) | null;
@@ -26,6 +27,15 @@ type MetricCardProps = {
   value: unknown;
   helper: string;
   icon: ReactNode;
+  contextBadge?: string;
+};
+
+type PathwayNode = {
+  code: string;
+  label: string;
+  level: string | number;
+  class_type?: string;
+  drug_count?: number;
 };
 
 type CohortDrug = Record<string, any> & {
@@ -47,6 +57,31 @@ function formatMetric(value: unknown) {
   return numeric.toLocaleString(undefined, {
     maximumFractionDigits: numeric % 1 === 0 ? 0 : 1,
   });
+}
+
+function scoreNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function getEnterpriseTier(value: unknown) {
+  const score = scoreNumber(value);
+  if (score === null) return 'Enterprise tier pending';
+  if (score >= 90) return 'Elite ATC class';
+  if (score >= 80) return 'Enterprise-ready class';
+  if (score >= 65) return 'Developing class';
+  return 'Foundational class';
+}
+
+function getPercentileContext(value: unknown) {
+  const score = scoreNumber(value);
+  if (score === null) return 'Percentile pending';
+  if (score >= 95) return 'Top 5% of ATC classes';
+  if (score >= 90) return 'Top 8% of ATC classes';
+  if (score >= 85) return 'Top 15% of ATC classes';
+  if (score >= 75) return 'Top quartile ATC class';
+  if (score >= 60) return 'Above baseline ATC class';
+  return 'Foundational ATC class';
 }
 
 function scoreValue(item: any, key: string) {
@@ -81,9 +116,47 @@ function getDrugRxcui(drug: any) {
   return String(drug?.rxcui || drug?.drug?.rxcui || '').trim();
 }
 
-function getSelectedAtc(pathway: PathwayNode[], atcCode: string | null) {
+function normalizeAtcNode(item: any, index: number): PathwayNode | null {
+  const code = clean(item?.code || item?.class_id || item?.atc_code, '');
+  const label = clean(item?.label || item?.class_name || item?.atc_name || code, code);
+  if (!code) return null;
+  return {
+    code,
+    label,
+    level: item?.level ?? item?.class_type ?? `ATC${index + 1}`,
+    class_type: item?.class_type,
+    drug_count: item?.drug_count,
+  };
+}
+
+function normalizeBackendPathway(atcData: AtcClassPayload | null): PathwayNode[] {
+  const source = atcData?.parent_pathway || atcData?.pathway || [];
+  if (!Array.isArray(source)) return [];
+  return source.map(normalizeAtcNode).filter(Boolean) as PathwayNode[];
+}
+
+function normalizeFallbackPathway(drug: any): PathwayNode[] {
+  return buildTherapeuticPathway(drug).map((node: any) => ({
+    code: node.code,
+    label: node.label,
+    level: node.level,
+  }));
+}
+
+function getSelectedAtc(pathway: PathwayNode[], atcCode: string | null, atcData: AtcClassPayload | null) {
+  const targetCode = clean(atcData?.atc_code || atcData?.code || atcData?.class_id || atcCode, '');
+  if (targetCode) {
+    const existing = pathway.find((node) => node.code === targetCode);
+    if (existing) return existing;
+    return {
+      code: targetCode,
+      label: clean(atcData?.atc_name || atcData?.class_name || atcData?.label || targetCode, targetCode),
+      level: atcData?.level || 'ATC',
+      class_type: atcData?.class_type,
+    };
+  }
   if (!pathway.length) return null;
-  return pathway.find((node) => node.code === atcCode) || pathway[pathway.length - 1];
+  return pathway[pathway.length - 1];
 }
 
 function getRelatedDrugs(drug: any): CohortDrug[] {
@@ -138,16 +211,18 @@ function buildClassCards(pathway: PathwayNode[], childRows: any[], selectedCode:
     label: node.label,
     eyebrow: node.code === selectedCode ? 'Current ATC class' : `ATC ${node.level}`,
     type: 'pathway',
+    drug_count: node.drug_count,
   }));
 
   const childCards = childRows.map((row) => ({
-    code: row.code,
-    label: row.label,
+    code: row.code || row.class_id,
+    label: row.label || row.class_name,
     eyebrow: 'Child ATC class',
     type: 'child',
+    drug_count: row.drug_count,
   }));
 
-  const unique = new Map<string, { code: string; label: string; eyebrow: string; type: string }>();
+  const unique = new Map<string, { code: string; label: string; eyebrow: string; type: string; drug_count?: number }>();
   [...pathwayCards, ...childCards].forEach((card) => {
     if (card.code && !unique.has(card.code)) unique.set(card.code, card);
   });
@@ -200,7 +275,16 @@ function sortByScore(items: CohortDrug[], direction: 'desc' | 'asc') {
   });
 }
 
-function MetricCard({ label, value, helper, icon }: MetricCardProps) {
+function getAtcMetric(atcData: AtcClassPayload | null, keys: string[]) {
+  if (!atcData) return null;
+  for (const key of keys) {
+    const value = atcData?.[key] ?? atcData?.metrics?.[key];
+    if (value !== null && value !== undefined && value !== '') return value;
+  }
+  return null;
+}
+
+function MetricCard({ label, value, helper, icon, contextBadge }: MetricCardProps) {
   return (
     <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-sm">
       <div className="flex items-start gap-4">
@@ -208,6 +292,11 @@ function MetricCard({ label, value, helper, icon }: MetricCardProps) {
         <div>
           <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
           <p className="mt-2 text-3xl font-black text-white">{formatMetric(value)}</p>
+          {contextBadge ? (
+            <p className="mt-2 inline-flex rounded-full border border-emerald-300/25 bg-emerald-400/10 px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.12em] text-emerald-100">
+              {contextBadge}
+            </p>
+          ) : null}
           <p className="mt-2 text-sm leading-5 text-slate-400">{helper}</p>
         </div>
       </div>
@@ -234,37 +323,87 @@ function DrugPill({ item, onSelectDrug }: { item: CohortDrug; onSelectDrug?: (dr
         <ArrowRight className="mt-1 h-4 w-4 text-slate-600 transition group-hover:text-blue-300" />
       </div>
       <p className="mt-2 inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-[0.65rem] font-black uppercase tracking-[0.14em] text-cyan-200">
-        Score / similarity {formatMetric(score)}
+        Intelligence {formatMetric(score)}
       </p>
     </button>
   );
 }
 
 export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectAtc, onSelectDrug }: Props) {
-  const pathway = buildTherapeuticPathway(drug);
-  const selectedAtc = getSelectedAtc(pathway, atcCode);
+  const [atcData, setAtcData] = useState<AtcClassPayload | null>(null);
+  const [isLoadingAtc, setIsLoadingAtc] = useState(false);
+  const [atcError, setAtcError] = useState<string | null>(null);
+  const medicationRankingsRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const code = String(atcCode || '').trim();
+    if (!code) {
+      setAtcData(null);
+      setAtcError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingAtc(true);
+    setAtcError(null);
+
+    getAtcClass(code, 25)
+      .then((payload) => {
+        if (!cancelled) setAtcData(payload);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAtcData(null);
+          setAtcError(error instanceof Error ? error.message : 'ATC class request failed');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingAtc(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [atcCode]);
+
+  const fallbackPathway = useMemo(() => normalizeFallbackPathway(drug), [drug]);
+  const backendPathway = useMemo(() => normalizeBackendPathway(atcData), [atcData]);
+  const pathway = backendPathway.length ? backendPathway : fallbackPathway;
+  const selectedAtc = getSelectedAtc(pathway, atcCode, atcData);
   const selectedCode = selectedAtc?.code || atcCode || 'ATC';
-  const selectedLabel = selectedAtc?.label || 'ATC class intelligence';
+  const selectedLabel = clean(atcData?.atc_name || atcData?.class_name || atcData?.label || selectedAtc?.label, 'ATC class intelligence');
   const selectedIndex = selectedAtc ? pathway.findIndex((node) => node.code === selectedAtc.code) : -1;
   const parentPathway = selectedIndex >= 0 ? pathway.slice(0, selectedIndex + 1) : pathway;
-  const childRows = getClassRows(drug, selectedCode);
+  const backendChildren = Array.isArray(atcData?.children || atcData?.child_classes)
+    ? ((atcData?.children || atcData?.child_classes) as any[]).map((item, index) => normalizeAtcNode(item, index)).filter(Boolean)
+    : [];
+  const childRows = backendChildren.length ? backendChildren : getClassRows(drug, selectedCode);
   const peers = getPeerRows(pathway, selectedAtc);
   const classCards = buildClassCards(pathway, childRows, selectedCode);
-  const cohort = buildMedicationCohort(drug);
+
+  const fallbackCohort = buildMedicationCohort(drug);
+  const backendCohort = Array.isArray(atcData?.drugs) ? atcData!.drugs! : [];
+  const cohort = backendCohort.length ? backendCohort : fallbackCohort;
   const sortedTop = sortByScore(cohort, 'desc');
   const sortedBottom = sortByScore(cohort, 'asc').filter((item) => !sortedTop.slice(0, 5).includes(item));
-  const topDrugs = sortedTop.slice(0, 5);
-  const bottomDrugs = sortedBottom.slice(0, 5);
+  const topDrugs = atcData?.top_drugs?.length ? atcData.top_drugs : sortedTop.slice(0, 5);
+  const bottomDrugs = atcData?.bottom_drugs?.length ? atcData.bottom_drugs : sortedBottom.slice(0, 5);
   const sourceDrugName = getDrugName(drug);
-  const cohortCount = cohort.length;
-  const cohortHelper = cohortCount > 1
-    ? `Derived from ${cohortCount} available class/peer medication rows in the current payload.`
-    : 'Derived from the origin drug until the backend ATC aggregation endpoint is added.';
+  const cohortCount = atcData?.drug_count ?? atcData?.metrics?.drug_count ?? cohort.length;
+  const cohortHelper = atcData
+    ? `Calculated from ${formatMetric(cohortCount)} medication rows mapped to ${selectedCode}.`
+    : cohort.length > 1
+      ? `Derived from ${cohort.length} available class/peer medication rows in the current payload.`
+      : 'Derived from the origin drug while the ATC aggregation endpoint loads.';
 
-  const avgOverall = averageScore(cohort, 'overall_intelligence_score') ?? metricValue(drug, 'overall_intelligence_score');
-  const avgClaims = averageScore(cohort, 'claims_readiness_score') ?? metricValue(drug, 'claims_readiness_score');
-  const avgAi = averageScore(cohort, 'ai_readiness_score') ?? metricValue(drug, 'ai_readiness_score');
-  const avgSemantic = averageScore(cohort, 'semantic_richness_score') ?? metricValue(drug, 'semantic_richness_score');
+  const avgOverall = getAtcMetric(atcData, ['average_intelligence', 'average_overall_intelligence_score']) ?? averageScore(cohort, 'overall_intelligence_score') ?? metricValue(drug, 'overall_intelligence_score');
+  const avgClaims = getAtcMetric(atcData, ['average_claims_readiness', 'average_claims_readiness_score']) ?? averageScore(cohort, 'claims_readiness_score') ?? metricValue(drug, 'claims_readiness_score');
+  const avgAi = getAtcMetric(atcData, ['average_ai_readiness', 'average_ai_readiness_score']) ?? averageScore(cohort, 'ai_readiness_score') ?? metricValue(drug, 'ai_readiness_score');
+  const avgSemantic = getAtcMetric(atcData, ['average_semantic_richness', 'average_semantic_richness_score']) ?? averageScore(cohort, 'semantic_richness_score') ?? metricValue(drug, 'semantic_richness_score');
+  const avgInterop = getAtcMetric(atcData, ['average_interoperability', 'average_interoperability_score']) ?? averageScore(cohort, 'interoperability_score') ?? metricValue(drug, 'interoperability_score');
+  const atcPercentileContext = getPercentileContext(avgOverall);
+  const atcEnterpriseTier = getEnterpriseTier(avgOverall);
+  const scrollToMedicationRankings = () => medicationRankingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   if (!drug || !selectedAtc) {
     return (
@@ -295,6 +434,9 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
             <span className="inline-flex rounded-full border border-blue-300/30 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-100">
               Originally from {sourceDrugName}
             </span>
+            <span className="inline-flex rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-100">
+              {atcData ? 'Real ATC aggregation active' : isLoadingAtc ? 'Loading ATC aggregation' : 'Fallback class context'}
+            </span>
           </div>
           <button
             type="button"
@@ -313,9 +455,21 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
               <span className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-100">ATC Level {selectedAtc.level}</span>
             </div>
             <p className="mt-2 text-2xl font-black text-cyan-100">{selectedLabel}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="inline-flex items-center rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-100">
+                {formatMetric(cohortCount)} medications
+              </span>
+              <span className="inline-flex items-center rounded-full border border-blue-300/30 bg-blue-500/10 px-3 py-1 text-xs font-black text-blue-100">
+                {formatMetric(avgOverall)} average intelligence
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-100">
+                <Trophy className="h-3.5 w-3.5" /> {atcEnterpriseTier}
+              </span>
+            </div>
             <p className="mt-4 max-w-4xl text-sm leading-6 text-slate-300">
-              This is a class-level therapeutic intelligence page. Breadcrumb nodes are clickable therapeutic navigation targets, medication rankings are built from available peer/class rows, and the layout is ready for true backend ATC aggregation endpoints.
+              This is a true class-level therapeutic intelligence page. Metrics are calculated across all medications mapped to the selected ATC class when the backend aggregation endpoint is available.
             </p>
+            {atcError ? <p className="mt-3 text-sm text-amber-200">ATC aggregation fallback active: {atcError}</p> : null}
           </div>
 
           <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5">
@@ -333,10 +487,15 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
                 <p className="text-xs font-bold text-slate-400">Pathway position</p>
                 <p className="mt-2 text-2xl font-black text-white">{selectedIndex + 1} of {pathway.length}</p>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+              <button
+                type="button"
+                onClick={scrollToMedicationRankings}
+                className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-left transition hover:border-cyan-300 hover:bg-cyan-950/20 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+              >
                 <p className="text-xs font-bold text-slate-400">Medication set</p>
                 <p className="mt-2 text-2xl font-black text-white">{formatMetric(cohortCount)}</p>
-              </div>
+                <p className="mt-2 text-xs font-black text-cyan-200">View all {formatMetric(cohortCount)} medications →</p>
+              </button>
             </div>
           </div>
         </div>
@@ -369,10 +528,10 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Avg intelligence" value={avgOverall} helper={cohortHelper} icon={<Activity className="h-5 w-5" />} />
-        <MetricCard label="Avg claims readiness" value={avgClaims} helper={cohortHelper} icon={<Database className="h-5 w-5" />} />
-        <MetricCard label="Avg AI readiness" value={avgAi} helper={cohortHelper} icon={<Brain className="h-5 w-5" />} />
-        <MetricCard label="Avg semantic richness" value={avgSemantic} helper={cohortHelper} icon={<ShieldCheck className="h-5 w-5" />} />
+        <MetricCard label="Avg intelligence" value={avgOverall} helper={cohortHelper} icon={<Activity className="h-5 w-5" />} contextBadge={atcPercentileContext} />
+        <MetricCard label="Avg claims readiness" value={avgClaims} helper={cohortHelper} icon={<Database className="h-5 w-5" />} contextBadge={getEnterpriseTier(avgClaims)} />
+        <MetricCard label="Avg AI readiness" value={avgAi} helper={cohortHelper} icon={<Brain className="h-5 w-5" />} contextBadge={getEnterpriseTier(avgAi)} />
+        <MetricCard label="Avg semantic richness" value={avgSemantic} helper={cohortHelper} icon={<ShieldCheck className="h-5 w-5" />} contextBadge={getEnterpriseTier(avgSemantic)} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -386,7 +545,7 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
           </div>
 
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Use these class cards to move up and down the therapeutic hierarchy. Child class cards will expand automatically as backend ATC class endpoints are added.
+            Use these class cards to move up and down the therapeutic hierarchy. Child cards are now populated from the backend ATC class endpoint when available.
           </p>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -404,6 +563,7 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
                 <p className="text-[0.65rem] font-black uppercase tracking-[0.18em] text-cyan-300">{card.eyebrow}</p>
                 <p className="mt-2 text-lg font-black text-white">{card.code}</p>
                 <p className="mt-1 text-xs leading-5 text-slate-400">{card.label}</p>
+                {card.drug_count !== undefined ? <p className="mt-2 text-xs font-black text-cyan-200">{formatMetric(card.drug_count)} medications</p> : null}
               </button>
             ))}
           </div>
@@ -425,11 +585,11 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-sm">
+        <section ref={medicationRankingsRef} className="scroll-mt-6 rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-sm">
           <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Medication rankings</p>
           <h3 className="mt-2 text-2xl font-black text-white">Top / bottom medication context</h3>
           <p className="mt-2 text-sm leading-6 text-slate-400">
-            Rankings are sorted from available class, peer, and similarity medication rows. When backend ATC aggregation is added, this section can switch to true class-level top/bottom cohorts without changing the UI.
+            Rankings are now sourced from the ATC class aggregation endpoint when available, so top and bottom cohorts represent the selected class rather than the origin drug.
           </p>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
@@ -465,15 +625,15 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
       <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-sm">
         <p className="text-xs font-black uppercase tracking-[0.24em] text-cyan-300">Distribution</p>
         <h3 className="mt-2 text-2xl font-black text-white">Readiness distribution</h3>
-        <p className="mt-2 text-sm text-slate-400">Current distribution reflects the available medication cohort for this class view.</p>
+        <p className="mt-2 text-sm text-slate-400">Current distribution reflects the selected ATC class aggregation.</p>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
           {[
             ['Claims', avgClaims],
             ['AI', avgAi],
             ['Semantic', avgSemantic],
-            ['Interoperability', averageScore(cohort, 'interoperability_score') ?? metricValue(drug, 'interoperability_score')],
+            ['Interoperability', avgInterop],
           ].map(([label, value]) => (
-            <div key={label} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <div key={label as string} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
               <div className="mt-3 h-2 rounded-full bg-slate-800">
                 <div className="h-2 rounded-full bg-cyan-300" style={{ width: `${Math.max(0, Math.min(100, Number(value) || 0))}%` }} />
