@@ -36,6 +36,11 @@ type PathwayNode = {
   level: string | number;
   class_type?: string;
   drug_count?: number;
+  average_intelligence?: number | null;
+  average_claims_readiness?: number | null;
+  average_ai_readiness?: number | null;
+  average_semantic_richness?: number | null;
+  rollup_description?: string;
 };
 
 type CohortDrug = Record<string, any> & {
@@ -126,6 +131,11 @@ function normalizeAtcNode(item: any, index: number): PathwayNode | null {
     level: item?.level ?? item?.class_type ?? `ATC${index + 1}`,
     class_type: item?.class_type,
     drug_count: item?.drug_count,
+    average_intelligence: item?.average_intelligence,
+    average_claims_readiness: item?.average_claims_readiness,
+    average_ai_readiness: item?.average_ai_readiness,
+    average_semantic_richness: item?.average_semantic_richness,
+    rollup_description: item?.rollup_description,
   };
 }
 
@@ -212,6 +222,8 @@ function buildClassCards(pathway: PathwayNode[], childRows: any[], selectedCode:
     eyebrow: node.code === selectedCode ? 'Current ATC class' : `ATC ${node.level}`,
     type: 'pathway',
     drug_count: node.drug_count,
+    average_intelligence: node.average_intelligence,
+    rollup_description: node.rollup_description,
   }));
 
   const childCards = childRows.map((row) => ({
@@ -220,9 +232,11 @@ function buildClassCards(pathway: PathwayNode[], childRows: any[], selectedCode:
     eyebrow: 'Child ATC class',
     type: 'child',
     drug_count: row.drug_count,
+    average_intelligence: row.average_intelligence,
+    rollup_description: row.rollup_description,
   }));
 
-  const unique = new Map<string, { code: string; label: string; eyebrow: string; type: string; drug_count?: number }>();
+  const unique = new Map<string, { code: string; label: string; eyebrow: string; type: string; drug_count?: number; average_intelligence?: number | null; rollup_description?: string }>();
   [...pathwayCards, ...childCards].forEach((card) => {
     if (card.code && !unique.has(card.code)) unique.set(card.code, card);
   });
@@ -282,6 +296,31 @@ function getAtcMetric(atcData: AtcClassPayload | null, keys: string[]) {
     if (value !== null && value !== undefined && value !== '') return value;
   }
   return null;
+}
+
+
+function getRollupScopeLabel(atcData: AtcClassPayload | null, selectedAtc: PathwayNode | null) {
+  const backendScope = clean(atcData?.rollup_scope || atcData?.hierarchy_analytics?.rollup_scope, '');
+  if (backendScope) return backendScope;
+  const level = Number(selectedAtc?.level);
+  if (level <= 1) return 'Therapeutic domain';
+  if (level === 2) return 'Therapeutic subdomain';
+  if (level === 3) return 'Therapeutic category';
+  return 'ATC class';
+}
+
+function getRollupDescription(atcData: AtcClassPayload | null, selectedCode: string, rollupScope: string) {
+  return clean(
+    atcData?.rollup_description ||
+      atcData?.hierarchy_analytics?.rollup_description ||
+      `${rollupScope} rollup aggregating all medications mapped to ${selectedCode} and descendant ATC classes.`,
+    `${rollupScope} rollup aggregating all medications mapped to ${selectedCode}.`
+  );
+}
+
+function normalizeDescendantLevels(atcData: AtcClassPayload | null) {
+  const levels = atcData?.descendant_levels || atcData?.hierarchy_analytics?.descendant_levels || [];
+  return Array.isArray(levels) ? levels : [];
 }
 
 function MetricCard({ label, value, helper, icon, contextBadge }: MetricCardProps) {
@@ -403,6 +442,10 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
   const avgInterop = getAtcMetric(atcData, ['average_interoperability', 'average_interoperability_score']) ?? averageScore(cohort, 'interoperability_score') ?? metricValue(drug, 'interoperability_score');
   const atcPercentileContext = getPercentileContext(avgOverall);
   const atcEnterpriseTier = getEnterpriseTier(avgOverall);
+  const rollupScope = getRollupScopeLabel(atcData, selectedAtc);
+  const rollupDescription = getRollupDescription(atcData, selectedCode, rollupScope);
+  const descendantClassCount = atcData?.descendant_class_count ?? atcData?.hierarchy_analytics?.descendant_class_count ?? childRows.length;
+  const descendantLevels = normalizeDescendantLevels(atcData);
   const scrollToMedicationRankings = () => medicationRankingsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   if (!drug || !selectedAtc) {
@@ -435,7 +478,7 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
               Originally from {sourceDrugName}
             </span>
             <span className="inline-flex rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-100">
-              {atcData ? 'Real ATC aggregation active' : isLoadingAtc ? 'Loading ATC aggregation' : 'Fallback class context'}
+              {atcData ? 'Hierarchy rollup active' : isLoadingAtc ? 'Loading hierarchy rollup' : 'Fallback class context'}
             </span>
           </div>
           <button
@@ -453,6 +496,7 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <h2 className="text-5xl font-black tracking-tight text-white">{selectedCode}</h2>
               <span className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-3 py-1 text-xs font-black text-cyan-100">ATC Level {selectedAtc.level}</span>
+              <span className="rounded-full border border-purple-300/40 bg-purple-400/10 px-3 py-1 text-xs font-black text-purple-100">{rollupScope}</span>
             </div>
             <p className="mt-2 text-2xl font-black text-cyan-100">{selectedLabel}</p>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -467,7 +511,7 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
               </span>
             </div>
             <p className="mt-4 max-w-4xl text-sm leading-6 text-slate-300">
-              This is a true class-level therapeutic intelligence page. Metrics are calculated across all medications mapped to the selected ATC class when the backend aggregation endpoint is available.
+              {rollupDescription} This view supports navigation from medication intelligence to class, category, subdomain, and full therapeutic-domain intelligence.
             </p>
             {atcError ? <p className="mt-3 text-sm text-amber-200">ATC aggregation fallback active: {atcError}</p> : null}
           </div>
@@ -486,6 +530,11 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
               <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
                 <p className="text-xs font-bold text-slate-400">Pathway position</p>
                 <p className="mt-2 text-2xl font-black text-white">{selectedIndex + 1} of {pathway.length}</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+                <p className="text-xs font-bold text-slate-400">Descendant classes</p>
+                <p className="mt-2 text-2xl font-black text-white">{formatMetric(descendantClassCount)}</p>
+                <p className="mt-2 text-xs font-black text-purple-200">Hierarchy rollup</p>
               </div>
               <button
                 type="button"
@@ -525,10 +574,27 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
             ))}
           </div>
         </div>
+
+        {descendantLevels.length > 0 ? (
+          <div className="mt-6 rounded-3xl border border-slate-800 bg-slate-950/70 p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.22em] text-purple-300">
+              <Layers3 className="h-4 w-4" /> Hierarchy analytics
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {descendantLevels.map((level: any) => (
+                <div key={level.class_type || level.level} className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{level.class_type || `ATC${level.level}`}</p>
+                  <p className="mt-2 text-2xl font-black text-white">{formatMetric(level.class_count)}</p>
+                  <p className="mt-1 text-xs text-slate-400">classes · {formatMetric(level.drug_count)} mapped medication links</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Avg intelligence" value={avgOverall} helper={cohortHelper} icon={<Activity className="h-5 w-5" />} contextBadge={atcPercentileContext} />
+        <MetricCard label="Avg intelligence" value={avgOverall} helper={rollupDescription} icon={<Activity className="h-5 w-5" />} contextBadge={atcPercentileContext} />
         <MetricCard label="Avg claims readiness" value={avgClaims} helper={cohortHelper} icon={<Database className="h-5 w-5" />} contextBadge={getEnterpriseTier(avgClaims)} />
         <MetricCard label="Avg AI readiness" value={avgAi} helper={cohortHelper} icon={<Brain className="h-5 w-5" />} contextBadge={getEnterpriseTier(avgAi)} />
         <MetricCard label="Avg semantic richness" value={avgSemantic} helper={cohortHelper} icon={<ShieldCheck className="h-5 w-5" />} contextBadge={getEnterpriseTier(avgSemantic)} />
@@ -564,6 +630,10 @@ export default function ATCExplorerPage({ drug, atcCode, onBackToDrug, onSelectA
                 <p className="mt-2 text-lg font-black text-white">{card.code}</p>
                 <p className="mt-1 text-xs leading-5 text-slate-400">{card.label}</p>
                 {card.drug_count !== undefined ? <p className="mt-2 text-xs font-black text-cyan-200">{formatMetric(card.drug_count)} medications</p> : null}
+                {card.average_intelligence !== undefined && card.average_intelligence !== null ? (
+                  <p className="mt-1 text-xs font-black text-emerald-200">Avg intelligence {formatMetric(card.average_intelligence)}</p>
+                ) : null}
+                {card.rollup_description ? <p className="mt-2 text-[0.68rem] leading-4 text-slate-500">{card.rollup_description}</p> : null}
               </button>
             ))}
           </div>

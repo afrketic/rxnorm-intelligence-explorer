@@ -105,6 +105,12 @@ export type AtcClassPayload = {
   children?: AtcClassNode[];
   child_classes?: AtcClassNode[];
   metrics?: Record<string, any>;
+  hierarchy_analytics?: Record<string, any>;
+  descendant_levels?: AtcClassNode[] | Record<string, any>[];
+  rollup_scope?: string;
+  rollup_mode?: string;
+  rollup_description?: string;
+  descendant_class_count?: number;
   drug_count?: number;
   average_intelligence?: number | null;
   average_claims_readiness?: number | null;

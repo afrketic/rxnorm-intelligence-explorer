@@ -6501,6 +6501,123 @@ def fetch_atc_child_classes(conn: sqlite3.Connection, atc_code: str) -> List[Dic
     return children
 
 
+def fetch_atc_class_rollup_metrics(conn: sqlite3.Connection, atc_code: str) -> Dict[str, Any]:
+    """
+    Sprint 3B hierarchy analytics.
+
+    Returns true prefix-rollup analytics for any ATC level. For example:
+      A10BJ = GLP-1 analogue class
+      A10B  = all blood-glucose lowering child classes
+      A10   = all diabetes medication classes
+      A     = entire alimentary/metabolism domain
+    """
+    code = str(atc_code or "").strip().upper()
+    if not code:
+        return {}
+
+    drugs = fetch_atc_drug_rows(conn, code, limit=10000)
+    descendant_rows = conn.execute(
+        """
+        SELECT
+            class_type,
+            UPPER(CAST(class_id AS TEXT)) AS code,
+            COALESCE(class_name, class_id) AS label,
+            COUNT(DISTINCT CAST(rxcui AS TEXT)) AS drug_count
+        FROM research_classification_detail
+        WHERE UPPER(CAST(class_id AS TEXT)) LIKE ?
+          AND class_type LIKE 'ATC%'
+          AND UPPER(CAST(class_id AS TEXT)) <> ?
+        GROUP BY class_type, UPPER(CAST(class_id AS TEXT)), COALESCE(class_name, class_id)
+        ORDER BY class_type ASC, code ASC
+        """,
+        (f"{code}%", code),
+    ).fetchall()
+
+    descendant_classes = rows_to_dicts(descendant_rows)
+    descendant_by_level: Dict[str, Dict[str, Any]] = {}
+
+    for row in descendant_classes:
+        class_type = str(row.get("class_type") or "ATC").upper()
+        bucket = descendant_by_level.setdefault(
+            class_type,
+            {
+                "class_type": class_type,
+                "level": int(str(class_type).replace("ATC", "") or 0) if str(class_type).replace("ATC", "").isdigit() else None,
+                "class_count": 0,
+                "drug_count": 0,
+                "classes": [],
+            },
+        )
+        bucket["class_count"] += 1
+        try:
+            bucket["drug_count"] += int(row.get("drug_count") or 0)
+        except (TypeError, ValueError):
+            pass
+        bucket["classes"].append(
+            {
+                "code": row.get("code"),
+                "class_id": row.get("code"),
+                "label": row.get("label"),
+                "class_name": row.get("label"),
+                "class_type": class_type,
+                "level": atc_level_for_code(str(row.get("code") or "")),
+                "drug_count": row.get("drug_count"),
+            }
+        )
+
+    selected_level = atc_level_for_code(code)
+    next_level = selected_level + 1
+    next_type = ATC_TYPE_BY_LEVEL.get(next_level)
+
+    rollup_scope = (
+        "ATC class"
+        if selected_level >= 4
+        else "Therapeutic category"
+        if selected_level == 3
+        else "Therapeutic subdomain"
+        if selected_level == 2
+        else "Therapeutic domain"
+    )
+
+    return {
+        "selected_code": code,
+        "selected_level": selected_level,
+        "selected_class_type": atc_type_for_code(code),
+        "rollup_scope": rollup_scope,
+        "rollup_mode": "descendant_prefix_aggregation",
+        "rollup_description": f"Aggregates all medications mapped to {code} and every descendant ATC class beginning with {code}.",
+        "descendant_class_count": len(descendant_classes),
+        "descendant_levels": list(descendant_by_level.values()),
+        "next_child_level": next_level if next_type else None,
+        "next_child_class_type": next_type,
+        "medication_count": len(drugs),
+        "average_intelligence": score_average(drugs, "overall_intelligence_score"),
+        "average_claims_readiness": score_average(drugs, "claims_readiness_score"),
+        "average_ai_readiness": score_average(drugs, "ai_readiness_score"),
+        "average_semantic_richness": score_average(drugs, "semantic_richness_score"),
+        "average_interoperability": score_average(drugs, "interoperability_score"),
+    }
+
+
+def hydrate_atc_child_class_rollups(conn: sqlite3.Connection, children: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Attach rollup drug counts and average metrics to child class cards."""
+    hydrated = []
+    for child in children:
+        code = str(child.get("code") or child.get("class_id") or "").strip().upper()
+        if not code:
+            continue
+        drugs = fetch_atc_drug_rows(conn, code, limit=10000)
+        enriched = dict(child)
+        enriched["drug_count"] = len(drugs)
+        enriched["average_intelligence"] = score_average(drugs, "overall_intelligence_score")
+        enriched["average_claims_readiness"] = score_average(drugs, "claims_readiness_score")
+        enriched["average_ai_readiness"] = score_average(drugs, "ai_readiness_score")
+        enriched["average_semantic_richness"] = score_average(drugs, "semantic_richness_score")
+        enriched["rollup_description"] = f"Rolls up all medications mapped to {code} and descendant classes."
+        hydrated.append(enriched)
+    return hydrated
+
+
 @app.get("/atc/{atc_code}", tags=["ATC Explorer"])
 def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) -> Dict[str, Any]:
     """
@@ -6519,7 +6636,8 @@ def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) 
 
         label = get_atc_label(conn, code)
         pathway = build_atc_parent_pathway(conn, code)
-        children = fetch_atc_child_classes(conn, code)
+        children = hydrate_atc_child_class_rollups(conn, fetch_atc_child_classes(conn, code))
+        hierarchy_analytics = fetch_atc_class_rollup_metrics(conn, code)
         drugs = fetch_atc_drug_rows(conn, code, limit=5000)
 
     top_drugs = sorted(
@@ -6547,6 +6665,9 @@ def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) 
         "average_interoperability_score": score_average(drugs, "interoperability_score"),
         "average_clinical_semantics": score_average(drugs, "clinical_semantics_score"),
         "average_clinical_semantics_score": score_average(drugs, "clinical_semantics_score"),
+        "descendant_class_count": hierarchy_analytics.get("descendant_class_count"),
+        "selected_level": hierarchy_analytics.get("selected_level"),
+        "rollup_scope": hierarchy_analytics.get("rollup_scope"),
     }
 
     return {
@@ -6562,6 +6683,12 @@ def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) 
         "pathway": pathway,
         "children": children,
         "child_classes": children,
+        "hierarchy_analytics": hierarchy_analytics,
+        "descendant_levels": hierarchy_analytics.get("descendant_levels", []),
+        "rollup_scope": hierarchy_analytics.get("rollup_scope"),
+        "rollup_mode": hierarchy_analytics.get("rollup_mode"),
+        "rollup_description": hierarchy_analytics.get("rollup_description"),
+        "descendant_class_count": hierarchy_analytics.get("descendant_class_count"),
         "metrics": metrics,
         "drug_count": len(drugs),
         "average_intelligence": metrics["average_intelligence"],
@@ -6573,7 +6700,7 @@ def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) 
         "bottom_drugs": bottom_drugs,
         "drugs": drugs[:limit],
         "aggregation_source": "backend_sqlite_atc_prefix_aggregation",
-        "aggregation_version": "Sprint 3A real ATC aggregation",
+        "aggregation_version": "Sprint 3B hierarchy rollup aggregation",
     }
 
 
