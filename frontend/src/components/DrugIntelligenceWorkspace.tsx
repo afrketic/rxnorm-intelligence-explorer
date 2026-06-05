@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { DrugCard } from '../lib/api';
 import SafeCardBoundary from './SafeCardBoundary';
 import MedicationIntelligenceSummaryCard from './MedicationIntelligenceSummaryCard';
-import ClassificationPanel from './ClassificationPanel';
 import RelationshipPanel from './RelationshipPanel';
 import GraphPanel from './GraphPanel';
 import ExplainabilityEngineCard from './ExplainabilityEngineCard';
@@ -25,6 +24,7 @@ import ProductionHardeningCard from './ProductionHardeningCard';
 import MethodologySelectionCard from './MethodologySelectionCard';
 import ClaimsReadinessDashboard from './ClaimsReadinessDashboard';
 import AIReadinessDashboard from './AIReadinessDashboard';
+import ClinicalIntelligenceDashboard from './ClinicalIntelligenceDashboard';
 
 type WorkspaceTab =
   | 'overview'
@@ -175,8 +175,8 @@ export default function DrugIntelligenceWorkspace({ drug, onSelectSimilarDrug }:
       )}
 
       {activeTab === 'clinical' && (
-        <SafeCardBoundary title="Clinical + Classification Intelligence">
-          <ClassificationPanel
+        <SafeCardBoundary title="Clinical Intelligence Dashboard">
+          <ClinicalIntelligenceDashboard
             drug={drug}
             onSelectSimilarDrug={(similarDrug) => onSelectSimilarDrug?.(similarDrug as DrugCard)}
           />
