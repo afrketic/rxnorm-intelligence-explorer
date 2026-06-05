@@ -61,7 +61,7 @@ function tierStyle(tier?: string) {
   if (normalized.includes('strategic')) return 'border-blue-200 bg-blue-50 text-blue-900';
   if (normalized.includes('operational')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
   if (normalized.includes('emerging')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-slate-800/70 bg-slate-900/70 text-slate-300';
 }
 
 export default function StrategicOpportunityCard({ drug }: Props) {
@@ -111,7 +111,7 @@ export default function StrategicOpportunityCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-slate-800/70 bg-slate-950/70 shadow-sm">
       <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -170,23 +170,23 @@ export default function StrategicOpportunityCard({ drug }: Props) {
             <MetricTile label="Risk" value={formatScore(payload.scores.risk_score)} />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <h3 className="text-base font-black text-slate-950">Strategic Action Plan</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-5">
+            <h3 className="text-base font-black text-white">Strategic Action Plan</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {payload.opportunity.strategic_action_plan}
             </p>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Top Opportunity Drivers</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Top Opportunity Drivers</h3>
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {topDrivers.map((driver) => (
-                <div key={`${driver.driver_rank}-${driver.opportunity_driver}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div key={`${driver.driver_rank}-${driver.opportunity_driver}`} className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-black text-slate-950">
+                    <p className="font-black text-white">
                       #{driver.driver_rank} · {driver.opportunity_driver}
                     </p>
-                    <span className="text-sm font-black text-slate-900">
+                    <span className="text-sm font-black text-white">
                       {formatScore(driver.driver_score)}
                     </span>
                   </div>
@@ -196,8 +196,8 @@ export default function StrategicOpportunityCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Methodology</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Methodology</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {payload.methodology.opportunity_methodology}
             </p>
@@ -213,9 +213,9 @@ export default function StrategicOpportunityCard({ drug }: Props) {
 
 function MetricTile({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-lg font-black text-white">{value}</p>
     </div>
   );
 }

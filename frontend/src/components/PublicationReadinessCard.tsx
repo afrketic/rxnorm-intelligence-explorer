@@ -44,7 +44,7 @@ function tierStyle(tier?: string) {
   if (normalized.includes('research') || normalized.includes('defensible')) return 'border-blue-200 bg-blue-50 text-blue-900';
   if (normalized.includes('review') || normalized.includes('moderate')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
   if (normalized.includes('additional') || normalized.includes('exploratory')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-slate-800/70 bg-slate-900/70 text-slate-300';
 }
 
 export default function PublicationReadinessCard({ drug }: Props) {
@@ -119,7 +119,7 @@ export default function PublicationReadinessCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-slate-800/70 bg-slate-950/70 shadow-sm">
       <div className="bg-gradient-to-br from-slate-950 via-purple-950 to-blue-950 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -182,8 +182,8 @@ export default function PublicationReadinessCard({ drug }: Props) {
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-black text-slate-950">Scientific Benchmark Profile</h3>
+            <div className="rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+              <h3 className="text-base font-black text-white">Scientific Benchmark Profile</h3>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <MetricTile label="Accuracy" value={formatScore(scientific.scientific.accuracy_score)} />
                 <MetricTile label="Stability" value={formatScore(scientific.scientific.stability_score)} />
@@ -192,14 +192,14 @@ export default function PublicationReadinessCard({ drug }: Props) {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-black text-slate-950">Publication Reason Codes</h3>
+            <div className="rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+              <h3 className="text-base font-black text-white">Publication Reason Codes</h3>
               <div className="mt-4 space-y-3">
                 {topReasons.map((reason) => (
-                  <div key={reason.reason_code} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div key={reason.reason_code} className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="font-black text-slate-950">{reason.reason_code}</p>
-                      <span className="text-sm font-black text-slate-900">{formatScore(reason.reason_score)}</span>
+                      <p className="font-black text-white">{reason.reason_code}</p>
+                      <span className="text-sm font-black text-white">{formatScore(reason.reason_score)}</span>
                     </div>
                     <p className="mt-2 text-sm leading-6 text-slate-600">{reason.reason_description}</p>
                   </div>
@@ -208,11 +208,11 @@ export default function PublicationReadinessCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Methodology Performance Comparison</h3>
-            <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Methodology Performance Comparison</h3>
+            <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800/70">
               <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <thead className="bg-slate-900/80 text-xs uppercase tracking-wide text-slate-400">
                   <tr>
                     <th className="px-4 py-3">Methodology</th>
                     <th className="px-4 py-3">Role</th>
@@ -222,11 +222,11 @@ export default function PublicationReadinessCard({ drug }: Props) {
                 </thead>
                 <tbody>
                   {performance.map((item) => (
-                    <tr key={item.methodology} className="border-t border-slate-200">
-                      <td className="px-4 py-3 font-black text-slate-950">{item.methodology}</td>
-                      <td className="px-4 py-3 text-slate-700">{item.scientific_role}</td>
-                      <td className="px-4 py-3 text-slate-700">{formatScore(item.performance_score)}</td>
-                      <td className="px-4 py-3 text-slate-700">{formatScore(item.interpretability_score)}</td>
+                    <tr key={item.methodology} className="border-t border-slate-800/70">
+                      <td className="px-4 py-3 font-black text-white">{item.methodology}</td>
+                      <td className="px-4 py-3 text-slate-300">{item.scientific_role}</td>
+                      <td className="px-4 py-3 text-slate-300">{formatScore(item.performance_score)}</td>
+                      <td className="px-4 py-3 text-slate-300">{formatScore(item.interpretability_score)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -234,8 +234,8 @@ export default function PublicationReadinessCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">White Paper Data Mart Metrics</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">White Paper Data Mart Metrics</h3>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {whiteMetrics.slice(0, 8).map((item) => (
                 <MetricTile key={item.metric_name} label={item.metric_name} value={String(item.metric_value)} />
@@ -243,12 +243,12 @@ export default function PublicationReadinessCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Top Publication-Ready Assets</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Top Publication-Ready Assets</h3>
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {topRows.map((item) => (
-                <div key={item.rxcui} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="font-black text-slate-950">
+                <div key={item.rxcui} className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4">
+                  <p className="font-black text-white">
                     #{item.publication_rank} · {item.display_name}
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
@@ -259,8 +259,8 @@ export default function PublicationReadinessCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Methodology</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Methodology</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {publication.methodology.publication_methodology}
             </p>
@@ -276,9 +276,9 @@ export default function PublicationReadinessCard({ drug }: Props) {
 
 function MetricTile({ label, value }: { label: string | number; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-lg font-black text-white">{value}</p>
     </div>
   );
 }

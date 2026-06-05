@@ -69,7 +69,7 @@ function tierStyle(tier?: string) {
   if (normalized.includes('enterprise')) return 'border-blue-200 bg-blue-50 text-blue-900';
   if (normalized.includes('internal')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
   if (normalized.includes('enrichment')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-slate-800/70 bg-slate-900/70 text-slate-300';
 }
 
 export default function EnterpriseDeploymentCard({ drug }: Props) {
@@ -119,7 +119,7 @@ export default function EnterpriseDeploymentCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-slate-800/70 bg-slate-950/70 shadow-sm">
       <div className="bg-gradient-to-br from-slate-950 via-cyan-950 to-blue-950 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -177,21 +177,21 @@ export default function EnterpriseDeploymentCard({ drug }: Props) {
             <MetricTile label="Risk" value={formatScore(payload.scores.risk_score)} />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <h3 className="text-base font-black text-slate-950">Deployment Action Plan</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-5">
+            <h3 className="text-base font-black text-white">Deployment Action Plan</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {payload.deployment.deployment_action_plan}
             </p>
           </div>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-2">
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-black text-slate-950">Deployment Gates</h3>
+            <div className="rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+              <h3 className="text-base font-black text-white">Deployment Gates</h3>
               <div className="mt-4 space-y-3">
                 {payload.gates.map((gate) => (
-                  <div key={`${gate.gate_rank}-${gate.deployment_gate}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div key={`${gate.gate_rank}-${gate.deployment_gate}`} className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="font-black text-slate-950">
+                      <p className="font-black text-white">
                         #{gate.gate_rank} · {gate.deployment_gate}
                       </p>
                       <span className={`rounded-full px-3 py-1 text-xs font-black ${gate.gate_result === 'PASS' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
@@ -207,16 +207,16 @@ export default function EnterpriseDeploymentCard({ drug }: Props) {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-base font-black text-slate-950">Deployment Actions</h3>
+            <div className="rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+              <h3 className="text-base font-black text-white">Deployment Actions</h3>
               <div className="mt-4 space-y-3">
                 {topActions.map((action) => (
-                  <div key={`${action.action_rank}-${action.deployment_action}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div key={`${action.action_rank}-${action.deployment_action}`} className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4">
                     <div className="flex items-start justify-between gap-3">
-                      <p className="font-black text-slate-950">
+                      <p className="font-black text-white">
                         #{action.action_rank} · {action.deployment_action}
                       </p>
-                      <span className="text-sm font-black text-slate-900">
+                      <span className="text-sm font-black text-white">
                         {formatScore(action.action_score)}
                       </span>
                     </div>
@@ -227,8 +227,8 @@ export default function EnterpriseDeploymentCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Methodology</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Methodology</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {payload.methodology.deployment_methodology}
             </p>
@@ -244,9 +244,9 @@ export default function EnterpriseDeploymentCard({ drug }: Props) {
 
 function MetricTile({ label, value }: { label: string | number; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-lg font-black text-white">{value}</p>
     </div>
   );
 }

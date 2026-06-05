@@ -55,7 +55,7 @@ function badgeStyle(badge?: string) {
   if (normalized.includes('executive')) return 'border-blue-200 bg-blue-50 text-blue-900';
   if (normalized.includes('technical')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
   if (normalized.includes('enrichment')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-slate-800/70 bg-slate-900/70 text-slate-300';
 }
 
 export default function WebsiteDeploymentCard({ drug }: Props) {
@@ -111,7 +111,7 @@ export default function WebsiteDeploymentCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-slate-800/70 bg-slate-950/70 shadow-sm">
       <div className="bg-gradient-to-br from-slate-950 via-sky-950 to-blue-950 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -162,11 +162,11 @@ export default function WebsiteDeploymentCard({ drug }: Props) {
 
       {!loading && !error && payload && (
         <div className="p-7">
-          <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+          <div className="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-5">
             <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
               Website Card Preview
             </p>
-            <h3 className="mt-2 text-2xl font-black text-slate-950">
+            <h3 className="mt-2 text-2xl font-black text-white">
               {payload.website_demo.website_card_title}
             </h3>
             <p className="mt-1 text-sm font-bold text-blue-700">
@@ -184,19 +184,19 @@ export default function WebsiteDeploymentCard({ drug }: Props) {
             <MetricTile label="Gate Pass Rate" value={formatPercent(payload.scores.deployment_gate_pass_rate)} />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Website Route</h3>
-            <p className="mt-2 rounded-2xl bg-slate-50 px-4 py-3 font-mono text-sm text-slate-700">
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Website Route</h3>
+            <p className="mt-2 rounded-2xl bg-slate-900/70 px-4 py-3 font-mono text-sm text-slate-300">
               {payload.website_demo.website_route}
             </p>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Top Featured Demo Assets</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Top Featured Demo Assets</h3>
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {featured.map((item) => (
-                <div key={item.rxcui} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="font-black text-slate-950">
+                <div key={item.rxcui} className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4">
+                  <p className="font-black text-white">
                     #{item.featured_rank} · {item.display_name}
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
@@ -207,8 +207,8 @@ export default function WebsiteDeploymentCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Methodology</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Methodology</h3>
             <p className="mt-2 text-xs font-semibold text-slate-500">
               Version: {payload.methodology.website_layer_version} · Built: {payload.methodology.build_timestamp}
             </p>
@@ -221,9 +221,9 @@ export default function WebsiteDeploymentCard({ drug }: Props) {
 
 function MetricTile({ label, value }: { label: string | number; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-lg font-black text-white">{value}</p>
     </div>
   );
 }

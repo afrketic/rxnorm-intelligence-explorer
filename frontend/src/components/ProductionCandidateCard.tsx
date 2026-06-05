@@ -107,7 +107,7 @@ export default function ProductionCandidateCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-slate-800/70 bg-slate-950/70 shadow-sm">
       <div className="bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -165,8 +165,8 @@ export default function ProductionCandidateCard({ drug }: Props) {
             <MetricTile label="Risk" value={formatScore(payload.signals.risk_score)} />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Candidate Signal Profile</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Candidate Signal Profile</h3>
             <p className="mt-1 text-sm text-slate-500">
               Signals used to rank the medication as a production or demo candidate.
             </p>
@@ -184,8 +184,8 @@ export default function ProductionCandidateCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <h3 className="text-base font-black text-slate-950">Showcase Recommendation</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-5">
+            <h3 className="text-base font-black text-white">Showcase Recommendation</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {payload.rank.showcase_recommendation}
             </p>
@@ -201,9 +201,9 @@ export default function ProductionCandidateCard({ drug }: Props) {
 
 function MetricTile({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-xl font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-xl font-black text-white">{value}</p>
     </div>
   );
 }

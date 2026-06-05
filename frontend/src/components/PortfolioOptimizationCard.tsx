@@ -57,7 +57,7 @@ function segmentStyle(segment?: string) {
   if (normalized.includes('strategic')) return 'border-blue-200 bg-blue-50 text-blue-900';
   if (normalized.includes('operational')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
   if (normalized.includes('enrichment')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-slate-800/70 bg-slate-900/70 text-slate-300';
 }
 
 export default function PortfolioOptimizationCard({ drug }: Props) {
@@ -107,7 +107,7 @@ export default function PortfolioOptimizationCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-slate-800/70 bg-slate-950/70 shadow-sm">
       <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -165,23 +165,23 @@ export default function PortfolioOptimizationCard({ drug }: Props) {
             <MetricTile label="Risk" value={formatScore(payload.scores.risk_score)} />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <h3 className="text-base font-black text-slate-950">Optimization Action Plan</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-5">
+            <h3 className="text-base font-black text-white">Optimization Action Plan</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {payload.optimization.optimization_action_plan}
             </p>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Action Options</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Action Options</h3>
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {topActions.map((action) => (
-                <div key={`${action.action_rank}-${action.optimization_action}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div key={`${action.action_rank}-${action.optimization_action}`} className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-black text-slate-950">
+                    <p className="font-black text-white">
                       #{action.action_rank} · {action.optimization_action}
                     </p>
-                    <span className="text-sm font-black text-slate-900">
+                    <span className="text-sm font-black text-white">
                       {formatScore(action.action_score)}
                     </span>
                   </div>
@@ -191,8 +191,8 @@ export default function PortfolioOptimizationCard({ drug }: Props) {
             </div>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Methodology</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Methodology</h3>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               {payload.methodology.optimization_methodology}
             </p>
@@ -208,9 +208,9 @@ export default function PortfolioOptimizationCard({ drug }: Props) {
 
 function MetricTile({ label, value }: { label: string | number; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-lg font-black text-white">{value}</p>
     </div>
   );
 }

@@ -81,6 +81,7 @@ REQUIRED_TABLES = [
     "drug_intelligence_master_v1",
     "research_classification_master",
     "research_relationship_master",
+    "enterprise_healthcare_importance_master",
 ]
 
 SCORE_COLUMNS = [
@@ -397,7 +398,7 @@ def build_graph_intelligence(graph_payload: Dict[str, Any]) -> Dict[str, Any]:
             label,
         )
 
-    def top_node(node_types: set[str]) -> Optional[Dict[str, Any]]:
+    def top_node(node_types: set[str]) -> Dict[str, Any] | None:
         matches = [
             node for node in connected_nodes
             if str(node.get("node_type") or "").upper() in node_types
@@ -840,7 +841,7 @@ def get_row_name(row: Dict[str, Any]) -> str:
 
 def rank_disease_focus(
     classifications: Dict[str, Any],
-    graph_intelligence: Optional[Dict[str, Any]] = None,
+    graph_intelligence: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     disease_rows = classifications.get("DISEASE") or []
 
@@ -926,7 +927,7 @@ def rank_disease_focus(
 
 def build_graph_intelligence_v2(
     graph_payload: Dict[str, Any],
-    primary_therapeutic_pathway: Optional[Dict[str, Any]] = None,
+    primary_therapeutic_pathway: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     nodes = graph_payload.get("nodes") or []
     edges = graph_payload.get("edges") or []
@@ -1014,7 +1015,7 @@ def build_graph_intelligence_v2(
             label,
         )
 
-    def top_node(node_types: set[str]) -> Optional[Dict[str, Any]]:
+    def top_node(node_types: set[str]) -> Dict[str, Any] | None:
         matches = [
             node
             for node in connected_nodes
@@ -1267,7 +1268,7 @@ def build_disease_focus_ranking_layer(
 
 def infer_executive_disease_focus_from_therapy(
     medication_summary: Dict[str, Any],
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any] | None:
     domain = normalize_disease_text(medication_summary.get("primary_therapeutic_domain"))
     mechanism = normalize_disease_text(medication_summary.get("primary_mechanism"))
     pharmacologic_class = normalize_disease_text(medication_summary.get("primary_pharmacologic_class"))
@@ -1376,7 +1377,7 @@ def build_medication_intelligence_summary_v2(
     master: Dict[str, Any],
     classifications: Dict[str, Any],
     primary_therapeutic_pathway: Dict[str, Any],
-    graph_intelligence: Optional[Dict[str, Any]] = None,
+    graph_intelligence: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     pathway = primary_therapeutic_pathway.get("pathway") or []
 
@@ -2520,7 +2521,7 @@ def build_primary_therapeutic_pathway(classification_rows: List[sqlite3.Row]) ->
 def build_graph_intelligence(graph_payload: Dict[str, Any]) -> Dict[str, Any]:
     nodes = graph_payload.get("nodes") or []
 
-    def top_node(node_types: set[str]) -> Optional[Dict[str, Any]]:
+    def top_node(node_types: set[str]) -> Dict[str, Any] | None:
         matches = [
             node for node in nodes
             if str(node.get("node_type") or "").upper() in node_types
@@ -2766,7 +2767,7 @@ def build_executive_summary_layer_15c2(
     master: Dict[str, Any],
     classifications: Dict[str, Any],
     primary_therapeutic_pathway: Dict[str, Any],
-    existing_summary: Optional[Dict[str, Any]] = None,
+    existing_summary: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     drug_name = (
         master.get("rxnorm_name")
@@ -4251,7 +4252,7 @@ def get_production_candidate(rxcui: str):
 def list_production_candidates(
     limit: int = Query(default=25, ge=1, le=250),
     offset: int = Query(default=0, ge=0),
-    tier: Optional[str] = Query(default=None),
+    tier: str | None = Query(default=None),
 ):
     with get_connection() as conn:
         validate_table(conn, "production_candidate_rankings_v1")
@@ -4444,7 +4445,7 @@ def get_executive_tier_distribution():
 
 @app.get("/executive/leaderboards", tags=["Executive Leaderboards"])
 def get_executive_leaderboards(
-    category: Optional[str] = Query(default=None),
+    category: str | None = Query(default=None),
     limit: int = Query(default=25, ge=1, le=100),
 ):
     with get_connection() as conn:
@@ -5444,7 +5445,7 @@ def get_website_featured_medications(limit: int = Query(default=25, ge=1, le=100
 
 
 @app.get("/website-demo/collections", tags=["Website Demo"])
-def get_website_demo_collections(collection_name: Optional[str] = Query(default=None)):
+def get_website_demo_collections(collection_name: str | None = Query(default=None)):
     with get_connection() as conn:
         validate_table(conn, "website_demo_collections_v1")
 
@@ -5659,7 +5660,7 @@ def get_executive_portfolio_alias(rxcui: str):
 
 @app.get("/executive-leaderboards", tags=["Executive Leaderboards"])
 def get_executive_leaderboards_alias(
-    category: Optional[str] = Query(default=None),
+    category: str | None = Query(default=None),
     limit: int = Query(default=25, ge=1, le=100),
 ):
     return get_executive_leaderboards(category=category, limit=limit)
@@ -6238,7 +6239,7 @@ def get_top_scientific_benchmark_profiles(limit: int = Query(default=25, ge=1, l
 
 @app.get("/scientific-benchmark/rankings", tags=["Scientific Benchmark"])
 def get_scientific_rankings(
-    category: Optional[str] = Query(default=None),
+    category: str | None = Query(default=None),
     limit: int = Query(default=25, ge=1, le=250),
 ):
     with get_connection() as conn:
@@ -6902,14 +6903,21 @@ def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) 
 
 
 # =============================================================================
-# Enterprise Healthcare Importance (EHI)
+# Sprint H2H — Enterprise Healthcare Importance API Routes
 # =============================================================================
 
 @app.get("/enterprise-healthcare-importance/{rxcui}", tags=["Enterprise Healthcare Importance"])
 def get_enterprise_healthcare_importance(rxcui: str):
+    """
+    Return the Enterprise Healthcare Importance (EHI) profile for a selected RxCUI.
 
+    Source table:
+        enterprise_healthcare_importance_master
+
+    Current methodology:
+        H2G.1 calibrated platform-derived proxy inputs.
+    """
     with get_connection() as conn:
-
         validate_table(conn, "enterprise_healthcare_importance_master")
 
         row = conn.execute(
@@ -6925,53 +6933,113 @@ def get_enterprise_healthcare_importance(rxcui: str):
         if row is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"No Enterprise Healthcare Importance profile found for RxCUI {rxcui}"
+                detail=f"No Enterprise Healthcare Importance profile found for RxCUI {rxcui}",
             )
 
-        item = dict(row)
+    item = dict(row)
 
     return {
-        "rxcui": item.get("rxcui"),
+        "rxcui": str(rxcui),
         "drug_name": item.get("drug_name"),
-
-        "ehi_score": item.get("ehi_score"),
-        "ehi_rank": item.get("ehi_rank"),
-        "ehi_percentile": item.get("ehi_percentile"),
-
-        "ehi_tier": item.get("ehi_tier"),
-        "ehi_tier_label": item.get("ehi_tier_label"),
-
-        "primary_driver": item.get("primary_driver"),
-        "secondary_driver": item.get("secondary_driver"),
-        "limiting_factor": item.get("limiting_factor"),
-
-        "methodology_version": item.get("methodology_version"),
-        "calculation_date": item.get("calculation_date"),
+        "enterprise_healthcare_importance": {
+            "ehi_score": item.get("ehi_score"),
+            "ehi_rank": item.get("ehi_rank"),
+            "ehi_percentile": item.get("ehi_percentile"),
+            "ehi_tier": item.get("ehi_tier"),
+            "ehi_tier_label": item.get("ehi_tier_label"),
+        },
+        "domain_scores": {
+            "utilization_score": item.get("utilization_score"),
+            "spend_score": item.get("spend_score"),
+            "disease_burden_score": item.get("disease_burden_score"),
+            "population_impact_score": item.get("population_impact_score"),
+            "risk_score": item.get("risk_score"),
+        },
+        "domain_percentiles": {
+            "utilization_percentile": item.get("utilization_percentile"),
+            "spend_percentile": item.get("spend_percentile"),
+            "disease_burden_percentile": item.get("disease_burden_percentile"),
+            "population_impact_percentile": item.get("population_impact_percentile"),
+            "risk_percentile": item.get("risk_percentile"),
+        },
+        "raw_domain_inputs": {
+            "utilization_raw": item.get("utilization_raw"),
+            "spend_raw": item.get("spend_raw"),
+            "disease_burden_raw": item.get("disease_burden_raw"),
+            "population_impact_raw": item.get("population_impact_raw"),
+            "risk_raw": item.get("risk_raw"),
+        },
+        "drivers": {
+            "primary_driver": item.get("primary_driver"),
+            "secondary_driver": item.get("secondary_driver"),
+            "limiting_factor": item.get("limiting_factor"),
+        },
+        "methodology": {
+            "methodology_version": item.get("methodology_version"),
+            "calculation_date": item.get("calculation_date"),
+            "source_coverage_flag": item.get("source_coverage_flag"),
+        },
+        "source_signals": {
+            "overall_intelligence_score": item.get("source_overall_intelligence_score"),
+            "claims_readiness_score": item.get("source_claims_readiness_score"),
+            "ai_readiness_score": item.get("source_ai_readiness_score"),
+            "semantic_richness_score": item.get("source_semantic_richness_score"),
+            "interoperability_score": item.get("source_interoperability_score"),
+            "clinical_semantics_score": item.get("source_clinical_semantics_score"),
+            "explainability_score": item.get("source_explainability_score"),
+            "relationship_count": item.get("source_relationship_count"),
+            "classification_count": item.get("source_classification_count"),
+            "disease_count": item.get("source_disease_count"),
+            "atc_hierarchy_depth": item.get("source_atc_hierarchy_depth"),
+            "schedule_count": item.get("source_schedule_count"),
+        },
+        "raw": item,
     }
 
 
 @app.get("/enterprise-healthcare-importance/top", tags=["Enterprise Healthcare Importance"])
-def get_top_enterprise_healthcare_importance(limit: int = 25):
-
+def get_top_enterprise_healthcare_importance(
+    limit: int = Query(default=25, ge=1, le=250),
+):
+    """Return top EHI-ranked medications."""
     with get_connection() as conn:
-
         validate_table(conn, "enterprise_healthcare_importance_master")
-
         rows = conn.execute(
             """
             SELECT *
             FROM enterprise_healthcare_importance_master
-            ORDER BY ehi_rank ASC
+            ORDER BY ehi_rank ASC, drug_name ASC
             LIMIT ?
             """,
             (limit,),
         ).fetchall()
 
-    return [dict(row) for row in rows]
+    return rows_to_dicts(rows)
 
 
+@app.get("/enterprise-healthcare-importance/distribution/tiers", tags=["Enterprise Healthcare Importance"])
+def get_enterprise_healthcare_importance_tier_distribution():
+    """Return EHI tier counts from the current master table."""
+    with get_connection() as conn:
+        validate_table(conn, "enterprise_healthcare_importance_master")
+        rows = conn.execute(
+            """
+            SELECT
+                ehi_tier,
+                ehi_tier_label,
+                COUNT(*) AS medication_count,
+                ROUND(AVG(ehi_score), 2) AS avg_ehi_score,
+                ROUND(MIN(ehi_score), 2) AS min_ehi_score,
+                ROUND(MAX(ehi_score), 2) AS max_ehi_score
+            FROM enterprise_healthcare_importance_master
+            GROUP BY ehi_tier, ehi_tier_label
+            ORDER BY ehi_tier ASC
+            """
+        ).fetchall()
 
-    
+    return rows_to_dicts(rows)
+
+
 # -----------------------------------------------------------------------------
 # Generic table endpoint for internal testing
 # -----------------------------------------------------------------------------

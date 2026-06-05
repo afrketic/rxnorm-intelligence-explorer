@@ -135,3 +135,57 @@ export async function getAtcClass(atcCode: string, limit = 25) {
   const params = new URLSearchParams({ limit: String(limit) });
   return requestJson<AtcClassPayload>(`/atc/${encodeURIComponent(String(atcCode))}?${params.toString()}`);
 }
+
+export type EnterpriseHealthcareImportance = {
+  rxcui: string;
+  drug_name?: string;
+
+  ehi_score?: number;
+  ehi_rank?: number;
+  ehi_percentile?: number;
+
+  ehi_tier?: number;
+  ehi_tier_label?: string;
+
+  primary_driver?: string;
+  secondary_driver?: string;
+  limiting_factor?: string;
+
+  methodology_version?: string;
+  calculation_date?: string;
+
+  utilization_raw?: number;
+  utilization_score?: number;
+  utilization_percentile?: number;
+
+  spend_raw?: number;
+  spend_score?: number;
+  spend_percentile?: number;
+
+  disease_burden_raw?: number;
+  disease_burden_score?: number;
+  disease_burden_percentile?: number;
+
+  population_impact_raw?: number;
+  population_impact_score?: number;
+  population_impact_percentile?: number;
+
+  risk_raw?: number;
+  risk_score?: number;
+  risk_percentile?: number;
+
+  population_size?: number;
+  top_population_share_pct?: number;
+  benchmark_label?: string;
+
+  [key: string]: any;
+};
+
+export async function getEnterpriseHealthcareImportance(
+  rxcui: string
+): Promise<EnterpriseHealthcareImportance> {
+  return requestJson<EnterpriseHealthcareImportance>(
+    `/enterprise-healthcare-importance/${encodeURIComponent(String(rxcui))}`
+  );
+}
+

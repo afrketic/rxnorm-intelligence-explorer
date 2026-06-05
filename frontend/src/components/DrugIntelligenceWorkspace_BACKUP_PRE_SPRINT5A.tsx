@@ -9,20 +9,29 @@ import MedicationReadinessScorecard from './MedicationReadinessScorecard';
 import ConfidenceScorecard from './ConfidenceScorecard';
 import PCAMethodologyScorecard from './PCAMethodologyScorecard';
 import MethodologyConsensusCard from './MethodologyConsensusCard';
+import ExecutivePortfolioCard from './ExecutivePortfolioCard';
+import ExecutiveLeaderboardsCard from './ExecutiveLeaderboardsCard';
+import ExecutiveRecommendationCard from './ExecutiveRecommendationCard';
+import ProductionCandidateCard from './ProductionCandidateCard';
+import EnterpriseDeploymentCard from './EnterpriseDeploymentCard';
+import WebsiteDeploymentCard from './WebsiteDeploymentCard';
+import ValidationTrackCard from './ValidationTrackCard';
+import PublicationReadinessCard from './PublicationReadinessCard';
+import StrategicOpportunityCard from './StrategicOpportunityCard';
+import PortfolioOptimizationCard from './PortfolioOptimizationCard';
 import AICopilotCard from './AICopilotCard';
+import ProductionHardeningCard from './ProductionHardeningCard';
 import MethodologySelectionCard from './MethodologySelectionCard';
 import ClaimsReadinessDashboard from './ClaimsReadinessDashboard';
 import AIReadinessDashboard from './AIReadinessDashboard';
 import ClinicalIntelligenceDashboard from './ClinicalIntelligenceDashboard';
-import EnterpriseIntelligenceDashboard from './EnterpriseIntelligenceDashboard';
 
 type WorkspaceTab =
   | 'overview'
   | 'claims'
   | 'ai'
   | 'clinical'
-  | 'knowledge'
-  | 'enterprise';
+  | 'knowledge';
 
 type Props = {
   drug: (DrugCard & Record<string, any>) | null;
@@ -39,7 +48,6 @@ const WORKSPACE_TABS: Array<{
   { id: 'ai', label: 'AI Readiness', description: 'Explainability, semantic richness, confidence, methods' },
   { id: 'clinical', label: 'Clinical Intelligence', description: 'ATC, disease, MOA, EPC, and peers' },
   { id: 'knowledge', label: 'Knowledge Graph', description: 'Graph structure + RxNorm relationships' },
-  { id: 'enterprise', label: 'Enterprise Intelligence', description: 'Portfolio, deployment, validation, and publication strategy' },
 ];
 
 function EmptyState() {
@@ -99,9 +107,35 @@ export default function DrugIntelligenceWorkspace({ drug, onSelectSimilarDrug }:
       </div>
 
       {activeTab === 'overview' && (
-        <SafeCardBoundary title="Medication Intelligence Profile">
-          <MedicationIntelligenceSummaryCard drug={drug} />
-        </SafeCardBoundary>
+        <>
+          <SafeCardBoundary title="Medication Intelligence Profile">
+            <MedicationIntelligenceSummaryCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Executive Portfolio Ranking">
+            <ExecutivePortfolioCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Executive Leaderboards">
+            <ExecutiveLeaderboardsCard />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Executive Recommendation Engine">
+            <ExecutiveRecommendationCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Production Candidate Ranking">
+            <ProductionCandidateCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Strategic Opportunity Engine">
+            <StrategicOpportunityCard drug={drug} />
+          </SafeCardBoundary>
+
+          <SafeCardBoundary title="Portfolio Optimization Engine">
+            <PortfolioOptimizationCard drug={drug} />
+          </SafeCardBoundary>
+        </>
       )}
 
       {activeTab === 'claims' && (
@@ -157,10 +191,23 @@ export default function DrugIntelligenceWorkspace({ drug, onSelectSimilarDrug }:
           <SafeCardBoundary title="RxNorm Relationship Intelligence">
             <RelationshipPanel drug={drug} />
           </SafeCardBoundary>
+          <SafeCardBoundary title="Enterprise Deployment Layer">
+            <EnterpriseDeploymentCard drug={drug} />
+          </SafeCardBoundary>
+          <SafeCardBoundary title="Website Deployment Layer">
+            <WebsiteDeploymentCard drug={drug} />
+          </SafeCardBoundary>
+          <SafeCardBoundary title="Production Hardening Layer">
+            <ProductionHardeningCard drug={drug} />
+          </SafeCardBoundary>
+          <SafeCardBoundary title="Validation Track V1–V5">
+            <ValidationTrackCard drug={drug} />
+          </SafeCardBoundary>
+          <SafeCardBoundary title="Publication Readiness Release">
+            <PublicationReadinessCard drug={drug} />
+          </SafeCardBoundary>
         </>
       )}
-
-      {activeTab === 'enterprise' && <EnterpriseIntelligenceDashboard drug={drug} />}
     </section>
   );
 }

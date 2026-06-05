@@ -51,7 +51,7 @@ function tierStyle(tier?: string) {
   if (normalized.includes('enterprise') || normalized.includes('strong')) return 'border-blue-200 bg-blue-50 text-blue-900';
   if (normalized.includes('emerging') || normalized.includes('moderate')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
   if (normalized.includes('monitor')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+  return 'border-slate-800/70 bg-slate-900/70 text-slate-300';
 }
 
 export default function ValidationTrackCard({ drug }: Props) {
@@ -113,7 +113,7 @@ export default function ValidationTrackCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-slate-800/70 bg-slate-950/70 shadow-sm">
       <div className="bg-gradient-to-br from-slate-950 via-violet-950 to-blue-950 p-7 text-white">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -190,7 +190,7 @@ export default function ValidationTrackCard({ drug }: Props) {
               </p>
               <div className="mt-3 grid gap-2">
                 {topLoadings.map((item) => (
-                  <div key={`${item.factor_number}-${item.feature_name}`} className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <div key={`${item.factor_number}-${item.feature_name}`} className="rounded-xl bg-slate-900/70 px-3 py-2 text-xs text-slate-600">
                     Factor {item.factor_number}: <strong>{item.feature_name}</strong> · loading {formatScore(item.factor_loading)}
                   </div>
                 ))}
@@ -216,12 +216,12 @@ export default function ValidationTrackCard({ drug }: Props) {
             </Panel>
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Top Validation Assets</h3>
+          <div className="mt-5 rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+            <h3 className="text-base font-black text-white">Top Validation Assets</h3>
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {topRows.map((item) => (
-                <div key={item.rxcui} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="font-black text-slate-950">
+                <div key={item.rxcui} className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-4">
+                  <p className="font-black text-white">
                     #{item.methodology_v2_rank} · {item.display_name}
                   </p>
                   <p className="mt-1 text-sm text-slate-600">
@@ -239,8 +239,8 @@ export default function ValidationTrackCard({ drug }: Props) {
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h3 className="text-base font-black text-slate-950">{title}</h3>
+    <div className="rounded-3xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
+      <h3 className="text-base font-black text-white">{title}</h3>
       <div className="mt-3">{children}</div>
     </div>
   );
@@ -248,9 +248,9 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 
 function MetricTile({ label, value }: { label: string | number; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-2xl border border-slate-800/70 bg-slate-950/70 p-5 shadow-sm">
       <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+      <p className="mt-2 text-lg font-black text-white">{value}</p>
     </div>
   );
 }
