@@ -6910,12 +6910,12 @@ def get_enterprise_healthcare_importance(rxcui: str):
 
     with get_connection() as conn:
 
-        validate_table(conn, "enterprise_healthcare_importance_master")
+        validate_table(conn, "enterprise_healthcare_importance_api_current_v1")
 
         row = conn.execute(
             """
             SELECT *
-            FROM enterprise_healthcare_importance_master
+            FROM enterprise_healthcare_importance_api_current_v1
             WHERE CAST(rxcui AS TEXT) = ?
             LIMIT 1
             """,
@@ -6933,45 +6933,361 @@ def get_enterprise_healthcare_importance(rxcui: str):
     return {
         "rxcui": item.get("rxcui"),
         "drug_name": item.get("drug_name"),
-
         "ehi_score": item.get("ehi_score"),
         "ehi_rank": item.get("ehi_rank"),
         "ehi_percentile": item.get("ehi_percentile"),
-
         "ehi_tier": item.get("ehi_tier"),
         "ehi_tier_label": item.get("ehi_tier_label"),
-
         "primary_driver": item.get("primary_driver"),
         "secondary_driver": item.get("secondary_driver"),
         "limiting_factor": item.get("limiting_factor"),
-
+        "utilization_score": item.get("utilization_score"),
+        "spend_score": item.get("spend_score"),
+        "disease_burden_score": item.get("disease_burden_score"),
+        "population_impact_score": item.get("population_impact_score"),
+        "risk_score": item.get("risk_score"),
+        "population_size": 30132,
+        "top_population_share_pct": round(
+            100 - float(item.get("ehi_percentile") or 0),
+            2,
+        ),
         "methodology_version": item.get("methodology_version"),
         "calculation_date": item.get("calculation_date"),
+
+        "utilization_weight": 0.30,
+        "spend_weight": 0.25,
+        "disease_burden_weight": 0.20,
+        "population_impact_weight": 0.15,
+        "risk_weight": 0.10,
     }
 
 
-@app.get("/enterprise-healthcare-importance/top", tags=["Enterprise Healthcare Importance"])
-def get_top_enterprise_healthcare_importance(limit: int = 25):
+@app.get(
+    "/enterprise-healthcare-importance-validation/{rxcui}",
+    tags=["Enterprise Healthcare Importance"],
+)
+def get_enterprise_healthcare_importance_validation(rxcui: str):
 
     with get_connection() as conn:
 
-        validate_table(conn, "enterprise_healthcare_importance_master")
+        validate_table(conn, "confidence_interval_v1")
+        validate_table(conn, "bootstrap_stability_v1")
+        validate_table(conn, "sensitivity_analysis_v1")
+        validate_table(conn, "methodology_agreement_v1")
+
+        confidence_interval = conn.execute(
+            """
+            SELECT *
+            FROM confidence_interval_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            LIMIT 1
+            """,
+            (str(rxcui),),
+        ).fetchone()
+
+        bootstrap = conn.execute(
+            """
+            SELECT *
+            FROM bootstrap_stability_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            LIMIT 1
+            """,
+            (str(rxcui),),
+        ).fetchone()
+
+        sensitivity = conn.execute(
+            """
+            SELECT *
+            FROM sensitivity_analysis_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            LIMIT 1
+            """,
+            (str(rxcui),),
+        ).fetchone()
+
+        methodology_agreement = conn.execute(
+            """
+            SELECT *
+            FROM methodology_agreement_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            LIMIT 1
+            """,
+            (str(rxcui),),
+        ).fetchone()
+
+        if confidence_interval is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No EHI validation profile found for RxCUI {rxcui}",
+            )
+
+        ci_item = dict(confidence_interval) if confidence_interval else {}
+        validation_confidence_score = float(
+            ci_item.get("validation_confidence_score") or 0
+        )
+
+        validation_tier = assign_ehi_validation_tier(validation_confidence_score)
+        validation_interpretation = assign_ehi_validation_interpretation(validation_tier)
+        bootstrap_item = dict(bootstrap) if bootstrap else None
+        sensitivity_item = dict(sensitivity) if sensitivity else None
+        methodology_item = dict(methodology_agreement) if methodology_agreement else None
+
+    return {
+        "rxcui": str(rxcui),
+        "drug_name": ci_item.get("drug_name"),
+        "confidence_interval": ci_item,
+        "bootstrap": bootstrap_item,
+        "sensitivity": sensitivity_item,
+        "methodology_agreement": methodology_item,
+        "validation_version": ci_item.get("validation_version"),
+        "validation_tier": validation_tier,
+        "validation_interpretation": validation_interpretation,
+    }
+
+
+# =============================================================================
+# Sprint H2O — Enterprise Healthcare Importance Validation Tier
+# =============================================================================
+
+def assign_ehi_validation_tier(validation_confidence_score: float) -> str:
+    if validation_confidence_score >= 90:
+        return "Very High Confidence"
+    if validation_confidence_score >= 75:
+        return "High Confidence"
+    if validation_confidence_score >= 60:
+        return "Moderate Confidence"
+    if validation_confidence_score >= 40:
+        return "Limited Confidence"
+    return "Experimental"
+
+
+def assign_ehi_validation_interpretation(validation_tier: str) -> str:
+    if validation_tier == "Very High Confidence":
+        return (
+            "This score demonstrates very high statistical stability, strong methodology "
+            "agreement, and a narrow confidence interval. Interpret with high confidence."
+        )
+
+    if validation_tier == "High Confidence":
+        return (
+            "This score demonstrates strong validation evidence and is generally stable "
+            "across perturbation, sensitivity, and alternative methodology checks."
+        )
+
+    if validation_tier == "Moderate Confidence":
+        return (
+            "This score demonstrates moderate statistical stability and methodology agreement. "
+            "Interpret with reasonable confidence. Additional external healthcare data may "
+            "further improve precision."
+        )
+
+    if validation_tier == "Limited Confidence":
+        return (
+            "This score has limited validation support and should be interpreted cautiously. "
+            "Additional healthcare utilization, spend, or clinical evidence may be needed."
+        )
+
+    return (
+        "This score should be treated as experimental. Validation evidence is currently weak "
+        "or incomplete."
+    )
+
+
+
+# =============================================================================
+# Sprint H3A.5 — EHI V2 Calibrated API Endpoint
+# =============================================================================
+
+def safe_float(value, default=None):
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def safe_int(value, default=None):
+    try:
+        if value is None:
+            return default
+        return int(float(value))
+    except Exception:
+        return default
+
+
+@app.get("/enterprise-healthcare-importance-v2/{rxcui}")
+def get_enterprise_healthcare_importance_v2(rxcui: str):
+    """
+    Returns EHI Version 2.0 Calibrated with CMS external evidence.
+
+    Source:
+        enterprise_healthcare_importance_master_v2_calibrated
+    """
+    with get_connection() as conn:
+        validate_table(conn, "enterprise_healthcare_importance_master_v2_calibrated")
+
+        row = conn.execute(
+            """
+            SELECT *
+            FROM enterprise_healthcare_importance_master_v2_calibrated
+            WHERE rxcui = ?
+            """,
+            (rxcui,),
+        ).fetchone()
+
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No EHI V2 calibrated record found for RxCUI {rxcui}",
+        )
+
+    item = dict(row)
+
+    return {
+        "rxcui": item.get("rxcui"),
+        "drug_name": item.get("drug_name"),
+
+        "ehi_v1": {
+            "score": safe_float(item.get("ehi_score_v1")),
+            "rank": safe_int(item.get("ehi_rank_v1")),
+            "tier": item.get("ehi_tier_label"),
+        },
+
+        "ehi_v2": {
+            "score": safe_float(item.get("ehi_score_v2_calibrated")),
+            "rank": safe_int(item.get("ehi_rank_v2_calibrated")),
+            "percentile": safe_float(item.get("ehi_v2_calibrated_percentile")),
+            "tier": item.get("ehi_v2_calibrated_tier_label"),
+            "rank_change": safe_int(item.get("rank_change_calibrated")),
+            "score_change": safe_float(item.get("score_change_calibrated")),
+            "methodology_version": item.get("methodology_version_v2_calibrated"),
+            "calculation_date": item.get("calculation_date_v2_calibrated"),
+        },
+
+        "domain_scores": {
+            "utilization_score": safe_float(item.get("utilization_score")),
+            "spend_score": safe_float(item.get("spend_score")),
+            "disease_burden_score": safe_float(item.get("disease_burden_score")),
+            "population_impact_score": safe_float(item.get("population_impact_score")),
+            "risk_score": safe_float(item.get("risk_score")),
+            "external_evidence_score": safe_float(item.get("external_evidence_score")),
+            "external_evidence_score_calibrated": safe_float(
+                item.get("external_evidence_score_calibrated")
+            ),
+            "external_evidence_boost": safe_float(item.get("external_evidence_boost")),
+        },
+
+        "cms_external_evidence": {
+            "has_cms_external_evidence": bool(
+                safe_int(item.get("has_cms_external_evidence"), 0)
+            ),
+            "cms_drug_name": item.get("cms_drug_name"),
+            "cms_spend": safe_float(item.get("cms_spend")),
+            "cms_utilization": safe_float(item.get("cms_utilization")),
+            "cms_beneficiary_count": safe_float(item.get("cms_beneficiary_count")),
+            "cms_spend_score": safe_float(item.get("cms_spend_score")),
+            "cms_utilization_score": safe_float(item.get("cms_utilization_score")),
+            "cms_spend_rank": safe_int(item.get("cms_spend_rank")),
+            "cms_utilization_rank": safe_int(item.get("cms_utilization_rank")),
+            "mapping_method": item.get("mapping_method"),
+            "mapping_confidence": safe_float(item.get("mapping_confidence")),
+            "manual_review_flag": safe_int(item.get("manual_review_flag")),
+            "calendar_year": safe_int(item.get("calendar_year")),
+        },
+
+        "explainability": {
+            "primary_driver": item.get("primary_driver_v2_calibrated"),
+            "secondary_driver": item.get("secondary_driver_v2_calibrated"),
+            "limiting_factor": item.get("limiting_factor_v2_calibrated"),
+            "calibration_method": item.get("external_evidence_calibration_method"),
+        },
+
+        "methodology": {
+            "version": item.get("methodology_version_v2_calibrated"),
+            "external_evidence_weight": 0.10,
+            "external_evidence_neutral_floor": 50.0,
+            "description": (
+                "EHI Version 2.0 Calibrated integrates CMS Medicare Part D external "
+                "evidence as a 10% positive evidence boost with a neutral floor."
+            ),
+        },
+
+        "raw": item,
+    }
+
+
+@app.get("/enterprise-healthcare-importance-v2/top")
+def get_top_enterprise_healthcare_importance_v2(limit: int = 25):
+    """
+    Returns top EHI Version 2.0 Calibrated records.
+    """
+    limit = max(1, min(int(limit), 100))
+
+    with get_connection() as conn:
+        validate_table(conn, "enterprise_healthcare_importance_master_v2_calibrated")
 
         rows = conn.execute(
             """
             SELECT *
-            FROM enterprise_healthcare_importance_master
-            ORDER BY ehi_rank ASC
+            FROM enterprise_healthcare_importance_master_v2_calibrated
+            ORDER BY ehi_rank_v2_calibrated ASC
             LIMIT ?
             """,
             (limit,),
         ).fetchall()
 
-    return [dict(row) for row in rows]
+    results = []
+
+    for row in rows:
+        item = dict(row)
+        results.append(
+            {
+                "rxcui": item.get("rxcui"),
+                "drug_name": item.get("drug_name"),
+                "ehi_score": safe_float(item.get("ehi_score_v2_calibrated")),
+                "ehi_rank": safe_int(item.get("ehi_rank_v2_calibrated")),
+                "ehi_percentile": safe_float(item.get("ehi_v2_calibrated_percentile")),
+                "ehi_tier_label": item.get("ehi_v2_calibrated_tier_label"),
+                "rank_change": safe_int(item.get("rank_change_calibrated")),
+                "score_change": safe_float(item.get("score_change_calibrated")),
+                "external_evidence_score": safe_float(item.get("external_evidence_score")),
+                "external_evidence_boost": safe_float(item.get("external_evidence_boost")),
+                "cms_spend": safe_float(item.get("cms_spend")),
+                "cms_utilization": safe_float(item.get("cms_utilization")),
+                "primary_driver": item.get("primary_driver_v2_calibrated"),
+                "secondary_driver": item.get("secondary_driver_v2_calibrated"),
+                "methodology_version": item.get("methodology_version_v2_calibrated"),
+            }
+        )
+
+    return {
+        "limit": limit,
+        "methodology_version": "EHI_V2_CMS_EXTERNAL_EVIDENCE_CALIBRATED_BOOST_V1",
+        "results": results,
+    }
+
+
+@app.get("/enterprise-healthcare-importance-v2-summary")
+def get_enterprise_healthcare_importance_v2_summary():
+    """
+    Returns EHI V2 calibrated validation summary.
+    """
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v2_calibrated_validation_summary")
+
+        rows = conn.execute(
+            """
+            SELECT metric, value
+            FROM ehi_v2_calibrated_validation_summary
+            """
+        ).fetchall()
+
+    return {row["metric"]: row["value"] for row in rows}
 
 
 
-    
+
 # -----------------------------------------------------------------------------
 # Generic table endpoint for internal testing
 # -----------------------------------------------------------------------------
