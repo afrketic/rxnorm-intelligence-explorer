@@ -6907,15 +6907,31 @@ def get_atc_class(atc_code: str, limit: int = Query(default=100, ge=1, le=500)) 
 
 @app.get("/enterprise-healthcare-importance/{rxcui}", tags=["Enterprise Healthcare Importance"])
 def get_enterprise_healthcare_importance(rxcui: str):
+    """
+    Current production Enterprise Healthcare Importance profile.
+
+    Production source after H4A.9:
+        enterprise_healthcare_importance_dashboard_current
+
+    This endpoint intentionally keeps the original frontend-compatible keys
+    (`ehi_score`, `ehi_rank`, `ehi_tier_label`, etc.) while also exposing the
+    production dashboard metadata for EHI V6 Calibrated.
+    """
+
+    population_size = 30132
 
     with get_connection() as conn:
+        source_table = "enterprise_healthcare_importance_dashboard_current"
 
-        validate_table(conn, "enterprise_healthcare_importance_api_current_v1")
+        if not table_exists(conn, source_table):
+            source_table = "enterprise_healthcare_importance_api_current_v1"
+
+        validate_table(conn, source_table)
 
         row = conn.execute(
-            """
+            f"""
             SELECT *
-            FROM enterprise_healthcare_importance_api_current_v1
+            FROM "{source_table}"
             WHERE CAST(rxcui AS TEXT) = ?
             LIMIT 1
             """,
@@ -6925,40 +6941,155 @@ def get_enterprise_healthcare_importance(rxcui: str):
         if row is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"No Enterprise Healthcare Importance profile found for RxCUI {rxcui}"
+                detail=f"No Enterprise Healthcare Importance profile found for RxCUI {rxcui}",
             )
 
         item = dict(row)
 
-    return {
-        "rxcui": item.get("rxcui"),
-        "drug_name": item.get("drug_name"),
-        "ehi_score": item.get("ehi_score"),
-        "ehi_rank": item.get("ehi_rank"),
-        "ehi_percentile": item.get("ehi_percentile"),
-        "ehi_tier": item.get("ehi_tier"),
-        "ehi_tier_label": item.get("ehi_tier_label"),
-        "primary_driver": item.get("primary_driver"),
-        "secondary_driver": item.get("secondary_driver"),
-        "limiting_factor": item.get("limiting_factor"),
-        "utilization_score": item.get("utilization_score"),
-        "spend_score": item.get("spend_score"),
-        "disease_burden_score": item.get("disease_burden_score"),
-        "population_impact_score": item.get("population_impact_score"),
-        "risk_score": item.get("risk_score"),
-        "population_size": 30132,
-        "top_population_share_pct": round(
-            100 - float(item.get("ehi_percentile") or 0),
-            2,
-        ),
-        "methodology_version": item.get("methodology_version"),
-        "calculation_date": item.get("calculation_date"),
+    score = safe_float(
+        item.get("dashboard_ehi_score")
+        or item.get("ehi_score")
+        or item.get("V5_70_V6_30_score")
+        or item.get("ehi_score_v6")
+    )
 
-        "utilization_weight": 0.30,
-        "spend_weight": 0.25,
-        "disease_burden_weight": 0.20,
-        "population_impact_weight": 0.15,
-        "risk_weight": 0.10,
+    rank = safe_int(
+        item.get("dashboard_ehi_rank")
+        or item.get("ehi_rank")
+        or item.get("V5_70_V6_30_rank")
+        or item.get("ehi_rank_v6")
+    )
+
+    percentile = safe_float(item.get("dashboard_ehi_percentile") or item.get("ehi_percentile"))
+    if percentile is None and rank:
+        percentile = round((1 - (rank / population_size)) * 100, 4)
+
+    top_population_share_pct = None
+    if rank:
+        top_population_share_pct = round((rank / population_size) * 100, 4)
+
+    ehi_version = (
+        item.get("dashboard_ehi_version")
+        or item.get("production_ehi_version")
+        or "EHI V6 Calibrated"
+    )
+
+    methodology_version = (
+        item.get("dashboard_methodology_version")
+        or item.get("methodology_version")
+        or item.get("methodology_version_v4_cdc")
+        or "H4A9_PROMOTE_CALIBRATED_V6_TO_DASHBOARD_CURRENT_V1"
+    )
+
+    calculation_date = (
+        item.get("dashboard_calculation_date")
+        or item.get("calculation_date")
+        or item.get("calculation_date_v4_cdc")
+    )
+
+    primary_driver = item.get("dashboard_primary_driver") or item.get("primary_driver")
+    secondary_driver = item.get("dashboard_secondary_driver") or item.get("secondary_driver")
+    limiting_factor = item.get("dashboard_limiting_factor") or item.get("limiting_factor")
+
+    domain_scores = {
+        "utilization_score": safe_float(item.get("utilization_score")),
+        "spend_score": safe_float(item.get("spend_score")),
+        "disease_burden_score": safe_float(
+            item.get("disease_burden_score")
+            or item.get("disease_burden_score_v2")
+        ),
+        "population_impact_score": safe_float(item.get("population_impact_score")),
+        "risk_score": safe_float(
+            item.get("risk_score")
+            or item.get("risk_score_v3_final_fda")
+        ),
+        "external_evidence_score": safe_float(
+            item.get("external_evidence_score")
+            or item.get("external_evidence_score_calibrated")
+        ),
+        "cdc_burden_score": safe_float(item.get("cdc_burden_score")),
+    }
+
+    return {
+        "rxcui": str(item.get("rxcui") or rxcui),
+        "drug_name": item.get("drug_name") or item.get("display_name"),
+        "display_name": item.get("display_name") or item.get("drug_name"),
+
+        # Backward-compatible current EHI fields.
+        "ehi_score": score,
+        "ehi_rank": rank,
+        "ehi_percentile": percentile,
+        "ehi_tier": item.get("dashboard_ehi_tier") or item.get("ehi_tier"),
+        "ehi_tier_label": item.get("dashboard_ehi_tier_label") or item.get("ehi_tier_label"),
+
+        # Production dashboard metadata.
+        "ehi_version": ehi_version,
+        "dashboard_ehi_version": ehi_version,
+        "dashboard_status": item.get("dashboard_status") or "PRODUCTION",
+        "dashboard_source_table": item.get("dashboard_source_table") or source_table,
+        "methodology_version": methodology_version,
+        "calculation_date": calculation_date,
+
+        # Explainability.
+        "primary_driver": primary_driver,
+        "secondary_driver": secondary_driver,
+        "limiting_factor": limiting_factor,
+        "driver_explanation": (
+            f"{primary_driver or 'The primary driver'} is the strongest positive contributor "
+            f"to this medication's current Healthcare Importance profile."
+        ),
+        "limiting_factor_explanation": (
+            f"{limiting_factor or 'The limiting factor'} is the main area where additional "
+            f"evidence could further strengthen the profile."
+        ),
+
+        # Domain signals.
+        **domain_scores,
+
+        # Benchmark context.
+        "population_size": population_size,
+        "top_population_share_pct": top_population_share_pct,
+        "benchmark_label": (
+            f"Top {top_population_share_pct:.2f}% of evaluated RxCUIs"
+            if top_population_share_pct is not None
+            else None
+        ),
+
+        # Calibrated V6 blend context, when available.
+        "current_v5_dashboard_score": safe_float(item.get("current_v5_dashboard_score")),
+        "current_v5_dashboard_rank": safe_int(item.get("current_v5_dashboard_rank")),
+        "score_change_current_v5_to_v6": safe_float(
+            item.get("score_change_current_v5_to_v6_dry_run")
+        ),
+        "rank_change_current_v5_to_v6": safe_int(
+            item.get("rank_change_current_v5_to_v6_dry_run")
+        ),
+
+        # Current calibrated V6 weights.
+        "weights": {
+            "disease_burden_score": 0.197222222222222,
+            "utilization_score": 0.1632,
+            "population_impact_score": 0.158333333333333,
+            "spend_score": 0.120133333333333,
+            "risk_score": 0.118755555555556,
+            "dashboard_ehi_score": 0.111111111111111,
+            "cdc_burden_score": 0.0756888888888889,
+            "external_evidence_score": 0.0555555555555556,
+        },
+
+        "methodology": {
+            "name": "Enterprise Healthcare Importance",
+            "version": ehi_version,
+            "methodology_version": methodology_version,
+            "status": item.get("dashboard_status") or "PRODUCTION",
+            "description": (
+                "EHI V6 Calibrated blends the production V5 Healthcare Importance score "
+                "with a conservative predictive V6 adjustment. The model preserves dashboard "
+                "stability while incorporating validated predictive signal from CMS outcome testing."
+            ),
+        },
+
+        "raw": item,
     }
 
 

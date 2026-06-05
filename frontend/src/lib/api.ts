@@ -139,44 +139,55 @@ export async function getAtcClass(atcCode: string, limit = 25) {
 export type EnterpriseHealthcareImportance = {
   rxcui: string;
   drug_name?: string;
+  display_name?: string;
 
   ehi_score?: number;
   ehi_rank?: number;
   ehi_percentile?: number;
-
-  ehi_tier?: number;
+  ehi_tier?: number | string;
   ehi_tier_label?: string;
+
+  ehi_version?: string;
+  dashboard_ehi_version?: string;
+  dashboard_status?: string;
+  dashboard_source_table?: string;
 
   primary_driver?: string;
   secondary_driver?: string;
   limiting_factor?: string;
+  driver_explanation?: string;
+  limiting_factor_explanation?: string;
 
   methodology_version?: string;
   calculation_date?: string;
 
-  utilization_raw?: number;
   utilization_score?: number;
-  utilization_percentile?: number;
-
-  spend_raw?: number;
   spend_score?: number;
-  spend_percentile?: number;
-
-  disease_burden_raw?: number;
   disease_burden_score?: number;
-  disease_burden_percentile?: number;
-
-  population_impact_raw?: number;
   population_impact_score?: number;
-  population_impact_percentile?: number;
-
-  risk_raw?: number;
   risk_score?: number;
-  risk_percentile?: number;
+  external_evidence_score?: number;
+  cdc_burden_score?: number;
+
+  current_v5_dashboard_score?: number;
+  current_v5_dashboard_rank?: number;
+  score_change_current_v5_to_v6?: number;
+  rank_change_current_v5_to_v6?: number;
 
   population_size?: number;
   top_population_share_pct?: number;
   benchmark_label?: string;
+
+  weights?: Record<string, number>;
+
+  methodology?: {
+    name?: string;
+    version?: string;
+    methodology_version?: string;
+    status?: string;
+    description?: string;
+    [key: string]: any;
+  };
 
   [key: string]: any;
 };
@@ -189,3 +200,168 @@ export async function getEnterpriseHealthcareImportance(
   );
 }
 
+
+export type EnterpriseHealthcareImportanceV2 = {
+  rxcui: string;
+  drug_name?: string;
+  ehi_v1?: {
+    score?: number;
+    rank?: number;
+    tier?: string;
+    [key: string]: any;
+  };
+  ehi_v2?: {
+    score?: number;
+    rank?: number;
+    percentile?: number;
+    tier?: string;
+    rank_change?: number;
+    score_change?: number;
+    methodology_version?: string;
+    calculation_date?: string;
+    [key: string]: any;
+  };
+  domain_scores?: {
+    utilization_score?: number;
+    spend_score?: number;
+    disease_burden_score?: number;
+    population_impact_score?: number;
+    risk_score?: number;
+    external_evidence_score?: number;
+    external_evidence_score_calibrated?: number;
+    external_evidence_boost?: number;
+    [key: string]: any;
+  };
+  cms_external_evidence?: {
+    has_cms_external_evidence?: boolean;
+    cms_drug_name?: string;
+    cms_spend?: number;
+    cms_utilization?: number;
+    cms_beneficiary_count?: number;
+    cms_spend_score?: number;
+    cms_utilization_score?: number;
+    cms_spend_rank?: number;
+    cms_utilization_rank?: number;
+    mapping_method?: string;
+    mapping_confidence?: number;
+    manual_review_flag?: number;
+    calendar_year?: number;
+    [key: string]: any;
+  };
+  explainability?: {
+    primary_driver?: string;
+    secondary_driver?: string;
+    limiting_factor?: string;
+    calibration_method?: string;
+    [key: string]: any;
+  };
+  methodology?: {
+    version?: string;
+    external_evidence_weight?: number;
+    external_evidence_neutral_floor?: number;
+    description?: string;
+    [key: string]: any;
+  };
+  raw?: Record<string, any>;
+  [key: string]: any;
+};
+
+export async function getEnterpriseHealthcareImportanceV2(
+  rxcui: string
+): Promise<EnterpriseHealthcareImportanceV2> {
+  return requestJson<EnterpriseHealthcareImportanceV2>(
+    `/enterprise-healthcare-importance-v2/${encodeURIComponent(String(rxcui))}`
+  );
+}
+
+
+
+export type EHIValidationBootstrap = {
+  rxcui?: string;
+  drug_name?: string;
+  ehi_score?: number;
+  ehi_rank?: number;
+  ehi_mean?: number;
+  ehi_std?: number;
+  ehi_min?: number;
+  ehi_max?: number;
+  rank_std?: number;
+  stability_score?: number;
+  bootstrap_iterations?: number;
+  bootstrap_method?: string;
+  perturbation_sd?: number;
+  validation_version?: string;
+  build_timestamp?: string;
+  [key: string]: any;
+};
+
+export type EHIValidationSensitivity = {
+  rxcui?: string;
+  drug_name?: string;
+  expert_rank?: number;
+  rank_min?: number;
+  rank_max?: number;
+  rank_range?: number;
+  sensitivity_score?: number;
+  scenario_count?: number;
+  validation_version?: string;
+  build_timestamp?: string;
+  [key: string]: any;
+};
+
+export type EHIValidationMethodologyAgreement = {
+  rxcui?: string;
+  drug_name?: string;
+  expert_rank?: number;
+  equal_rank?: number;
+  pca_rank?: number;
+  factor_rank?: number;
+  ahp_rank?: number;
+  rank_std?: number;
+  rank_range?: number;
+  agreement_score?: number;
+  validation_version?: string;
+  build_timestamp?: string;
+  [key: string]: any;
+};
+
+export type EHIValidationConfidenceInterval = {
+  rxcui?: string;
+  drug_name?: string;
+  ehi_score?: number;
+  ehi_rank?: number;
+  ehi_ci_lower?: number;
+  ehi_ci_upper?: number;
+  ehi_ci_width?: number;
+  confidence_level?: number;
+  ci_method?: string;
+  bootstrap_stability_score?: number;
+  sensitivity_score?: number;
+  methodology_agreement_score?: number;
+  ci_width_score?: number;
+  validation_confidence_score?: number;
+  validation_version?: string;
+  build_timestamp?: string;
+  [key: string]: any;
+};
+
+export type EnterpriseHealthcareImportanceValidation = {
+  rxcui: string;
+  drug_name?: string;
+  confidence_interval?: EHIValidationConfidenceInterval | null;
+  bootstrap?: EHIValidationBootstrap | null;
+  sensitivity?: EHIValidationSensitivity | null;
+  methodology_agreement?: EHIValidationMethodologyAgreement | null;
+  validation_version?: string;
+  validation_tier?: string;
+  validation_interpretation?: string;
+  [key: string]: any;
+};
+
+export async function getEnterpriseHealthcareImportanceValidation(
+  rxcui: string
+): Promise<EnterpriseHealthcareImportanceValidation> {
+  return requestJson<EnterpriseHealthcareImportanceValidation>(
+    `/enterprise-healthcare-importance-validation/${encodeURIComponent(String(rxcui))}`
+  );
+}
