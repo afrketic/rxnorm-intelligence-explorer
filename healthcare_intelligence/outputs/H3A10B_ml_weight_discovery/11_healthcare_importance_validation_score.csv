@@ -1,0 +1,7 @@
+component,score,weight,status
+Coverage,100.0,0.25,
+Correlation Quality,65.71052581150195,0.2,
+Sensitivity Stability,99.70298486868042,0.2,
+Tier Stability,96.32218239745121,0.15,
+Model Fit,99.9817239248645,0.2,
+Healthcare Importance Validation Score,92.52737428062706,1.0,Validated

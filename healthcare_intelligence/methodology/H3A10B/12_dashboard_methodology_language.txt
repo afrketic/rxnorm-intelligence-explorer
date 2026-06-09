@@ -1,0 +1,11 @@
+Healthcare Importance Score
+
+Calculated using a statistically calibrated framework incorporating utilization, spend, population impact, disease burden, and risk.
+
+Weights are informed by machine learning and statistical validation across 30,132 medications, including linear regression, random forest, XGBoost SHAP explainability, PCA, correlation analysis, and sensitivity testing.
+
+Final production weights use a hybrid methodology: 70% statistical evidence and 30% healthcare domain expertise.
+
+Tier assignments are percentile-calibrated and validated using sensitivity testing, rank stability, model-fit diagnostics, and benchmark review.
+
+Healthcare Importance Validation Score: 92.5 / 100 — Validated.
