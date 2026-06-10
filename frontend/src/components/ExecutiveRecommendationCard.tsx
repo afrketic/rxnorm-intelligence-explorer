@@ -62,11 +62,24 @@ function formatPercent(value: unknown) {
 
 function tierStyle(tier?: string) {
   const normalized = (tier || '').toLowerCase();
-  if (normalized.includes('transformational')) return 'border-slate-300 bg-slate-950 text-white';
-  if (normalized.includes('strategic')) return 'border-blue-200 bg-blue-50 text-blue-900';
-  if (normalized.includes('operational')) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
-  if (normalized.includes('emerging')) return 'border-amber-200 bg-amber-50 text-amber-900';
-  return 'border-slate-200 bg-slate-50 text-slate-700';
+
+  if (normalized.includes('transformational') || normalized.includes('critical')) {
+    return 'border-cyan-300/50 bg-cyan-500/15 text-cyan-100';
+  }
+
+  if (normalized.includes('strategic')) {
+    return 'border-blue-300/50 bg-blue-500/15 text-blue-100';
+  }
+
+  if (normalized.includes('operational')) {
+    return 'border-emerald-300/50 bg-emerald-500/15 text-emerald-100';
+  }
+
+  if (normalized.includes('emerging')) {
+    return 'border-amber-300/50 bg-amber-500/15 text-amber-100';
+  }
+
+  return 'border-slate-600 bg-slate-800 text-slate-200';
 }
 
 export default function ExecutiveRecommendationCard({ drug }: Props) {
@@ -117,37 +130,43 @@ export default function ExecutiveRecommendationCard({ drug }: Props) {
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="bg-gradient-to-br from-blue-950 to-slate-950 p-7 text-white">
+    <section className="overflow-hidden rounded-[2rem] border border-cyan-300/20 bg-slate-950/90 text-white shadow-2xl shadow-slate-950/40">
+      <div className="border-b border-cyan-300/10 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.16),_transparent_36%),linear-gradient(135deg,#020617,#0f172a_48%,#07152d)] p-6 md:p-7">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.28em] text-blue-300">
-              Sprint 21B · Executive Recommendation Engine
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-300">
+              Executive Recommendation Engine
             </p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight">
+
+            <h2 className="mt-3 text-3xl font-black tracking-tight text-white">
               What Should We Do With This Drug?
             </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-blue-100">
+
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
               Converts intelligence, explainability, readiness, confidence, and risk into recommended use cases,
               audiences, impact tiers, and action plans.
             </p>
           </div>
 
           {payload && (
-            <div className="rounded-3xl border border-white/10 bg-white/10 px-6 py-5 text-right backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-wide text-blue-100">
+            <div className="rounded-3xl border border-cyan-300/25 bg-cyan-500/10 px-6 py-5 text-right shadow-xl shadow-cyan-950/30 backdrop-blur">
+              <p className="text-xs font-black uppercase tracking-wide text-cyan-200">
                 Recommendation Score
               </p>
+
               <p className="mt-1 text-5xl font-black text-white">
                 {formatScore(payload.recommendation.executive_recommendation_score)}
               </p>
-              <p className="mt-1 text-sm font-bold text-blue-100">
+
+              <p className="mt-1 text-sm font-bold text-cyan-100">
                 Rank #{payload.recommendation.executive_recommendation_rank?.toLocaleString()}
               </p>
+
               <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-black ${tierStyle(payload.recommendation.business_impact_tier)}`}>
                 {payload.recommendation.business_impact_tier}
               </span>
-              <p className="mt-2 text-xs font-semibold text-blue-100">
+
+              <p className="mt-2 text-xs font-semibold text-cyan-100">
                 {formatPercent(payload.recommendation.executive_recommendation_percentile)} percentile
               </p>
             </div>
@@ -156,19 +175,19 @@ export default function ExecutiveRecommendationCard({ drug }: Props) {
       </div>
 
       {loading && (
-        <div className="p-7 text-sm font-semibold text-slate-500">
+        <div className="p-7 text-sm font-semibold text-slate-400">
           Loading executive recommendation…
         </div>
       )}
 
       {error && (
-        <div className="m-7 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700">
+        <div className="m-7 rounded-2xl border border-rose-400/40 bg-rose-950/40 p-5 text-sm font-semibold text-rose-200">
           {error}
         </div>
       )}
 
       {!loading && !error && payload && (
-        <div className="p-7">
+        <div className="space-y-5 p-6 md:p-7">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <MetricTile label="Primary Use Case" value={payload.recommendation.primary_recommended_use_case} />
             <MetricTile label="Primary Audience" value={payload.recommendation.primary_recommended_audience} />
@@ -176,14 +195,15 @@ export default function ExecutiveRecommendationCard({ drug }: Props) {
             <MetricTile label="Risk" value={formatScore(payload.scores.risk_score)} />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <h3 className="text-base font-black text-slate-950">Recommended Action Plan</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+          <div className="rounded-3xl border border-cyan-300/15 bg-slate-900/70 p-5">
+            <h3 className="text-base font-black text-white">Recommended Action Plan</h3>
+
+            <p className="mt-2 text-sm leading-6 text-slate-300">
               {payload.recommendation.recommended_action_plan}
             </p>
           </div>
 
-          <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <div className="grid gap-5 lg:grid-cols-2">
             <RecommendationList
               title="Recommended Use Cases"
               items={topUseCases.map((item) => ({
@@ -205,11 +225,13 @@ export default function ExecutiveRecommendationCard({ drug }: Props) {
             />
           </div>
 
-          <div className="mt-5 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h3 className="text-base font-black text-slate-950">Methodology</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
+          <div className="rounded-3xl border border-slate-800 bg-slate-950/80 p-5">
+            <h3 className="text-base font-black text-white">Methodology</h3>
+
+            <p className="mt-2 text-sm leading-6 text-slate-400">
               {payload.methodology.recommendation_methodology}
             </p>
+
             <p className="mt-3 text-xs font-semibold text-slate-500">
               Version: {payload.methodology.recommendation_version} · Built: {payload.methodology.build_timestamp}
             </p>
@@ -222,9 +244,14 @@ export default function ExecutiveRecommendationCard({ drug }: Props) {
 
 function MetricTile({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-lg font-black text-slate-950">{value}</p>
+    <div className="rounded-2xl border border-cyan-300/10 bg-slate-950/70 p-5 shadow-sm">
+      <p className="text-xs font-black uppercase tracking-wide text-cyan-300">
+        {label}
+      </p>
+
+      <p className="mt-2 text-lg font-black text-white">
+        {value}
+      </p>
     </div>
   );
 }
@@ -237,24 +264,36 @@ function RecommendationList({
   items: Array<{ rank: number; title: string; score: number; rationale: string }>;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h3 className="text-base font-black text-slate-950">{title}</h3>
+    <div className="rounded-3xl border border-cyan-300/10 bg-slate-950/70 p-5 shadow-sm">
+      <h3 className="text-base font-black text-white">{title}</h3>
+
       <div className="mt-4 space-y-3">
-        {items.length === 0 && <p className="text-sm text-slate-500">No recommendations identified.</p>}
+        {items.length === 0 && (
+          <p className="text-sm text-slate-400">
+            No recommendations identified.
+          </p>
+        )}
 
         {items.map((item) => (
-          <div key={`${item.rank}-${item.title}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div
+            key={`${item.rank}-${item.title}`}
+            className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-black text-slate-950">
+                <p className="font-black text-white">
                   #{item.rank} · {item.title}
                 </p>
               </div>
-              <span className="text-sm font-black text-slate-900">
+
+              <span className="text-sm font-black text-cyan-200">
                 {formatScore(item.score)}
               </span>
             </div>
-            <p className="mt-2 text-sm text-slate-600">{item.rationale}</p>
+
+            <p className="mt-2 text-sm leading-5 text-slate-400">
+              {item.rationale}
+            </p>
           </div>
         ))}
       </div>

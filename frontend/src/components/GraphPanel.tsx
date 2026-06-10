@@ -51,30 +51,19 @@ type GraphPayload = {
   edges: GraphEdgeRecord[];
 };
 
-type GraphMetrics = {
-  rxcui: string;
-  node_count: number;
-  edge_count: number;
-  classification_node_count: number;
-  relationship_node_count: number;
-  intelligence_domain_count: number;
-  classification_depth: number;
-  graph_connectivity_score: number;
-  graph_builder_version?: string;
-  graph_build_timestamp?: string;
-};
-
 type GraphPanelDrug = DrugCard & {
   graph?: GraphPayload;
   drug?: Record<string, any>;
   scorecard?: Record<string, any>;
 };
 
-type ViewMode = 'executive' | 'full' | 'hierarchy' | 'disease' | 'rxnorm';
+type ViewMode = 'executive' | 'full';
+
+type DomainLabel = 'ATC' | 'Disease' | 'MOA' | 'EPC' | 'Chemical' | 'RxNorm';
 
 type VisualDomain = {
   id: string;
-  label: string;
+  label: DomainLabel;
   type: string;
   childTypes: string[];
 };
@@ -104,6 +93,7 @@ const NODE_TYPES = [
 
 const ATC_TYPES = ['ATC1', 'ATC2', 'ATC3', 'ATC4', 'ATC5'];
 const CHEMICAL_TYPES = ['CHEM', 'VA', 'DISPOS', 'STRUCT'];
+
 const INSIGHT_TYPES = [
   ...ATC_TYPES,
   'DISEASE',
@@ -171,39 +161,6 @@ const VISUAL_DOMAINS: VisualDomain[] = [
   { id: 'domain:RxNorm', label: 'RxNorm', type: 'DOMAIN_RXNORM', childTypes: ['RELATIONSHIP'] },
 ];
 
-const DOMAIN_GROUPS = [
-  { label: 'ATC', types: ['ATC1', 'ATC2', 'ATC3', 'ATC4', 'ATC5'] },
-  { label: 'Disease', types: ['DISEASE', 'PE'] },
-  { label: 'MOA', types: ['MOA'] },
-  { label: 'EPC', types: ['EPC'] },
-  { label: 'Chemical', types: ['CHEM', 'VA', 'DISPOS', 'STRUCT'] },
-  { label: 'RxNorm', types: ['RELATIONSHIP'] },
-];
-
-const EXECUTIVE_TYPES = [
-  'ATC1',
-  'ATC2',
-  'ATC3',
-  'ATC4',
-  'ATC5',
-  'DISEASE',
-  'MOA',
-  'EPC',
-  'PE',
-  'CHEM',
-  'VA',
-  'DISPOS',
-  'STRUCT',
-];
-
-const VIEW_MODES: Record<ViewMode, { label: string; types: string[] }> = {
-  executive: { label: 'Executive View', types: EXECUTIVE_TYPES },
-  full: { label: 'Full + RxNorm', types: NODE_TYPES.filter((type) => type !== 'DRUG') },
-  hierarchy: { label: 'Hierarchy', types: ['ATC1', 'ATC2', 'ATC3', 'ATC4', 'ATC5'] },
-  disease: { label: 'Disease', types: ['DISEASE', 'PE', 'MOA', 'EPC'] },
-  rxnorm: { label: 'RxNorm', types: ['RELATIONSHIP'] },
-};
-
 function normalizeType(value?: string | null) {
   return (value || 'UNKNOWN').toUpperCase();
 }
@@ -216,21 +173,7 @@ function nodeTypeLabel(value?: string | null) {
 function formatLabel(value?: string | null, fallback = 'Unknown') {
   const text = (value || '').trim();
   if (!text) return fallback;
-  return text.length > 42 ? `${text.slice(0, 42)}…` : text;
-}
-
-function toNumber(value: unknown, fallback = 0) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : fallback;
-}
-
-function scoreLabel(score: number) {
-  if (score >= 95) return 'Platinum';
-  if (score >= 90) return 'Enterprise Ready';
-  if (score >= 75) return 'Strong';
-  if (score >= 50) return 'Developing';
-  if (score >= 25) return 'Limited';
-  return 'Foundational';
+  return text.length > 36 ? `${text.slice(0, 36)}…` : text;
 }
 
 function getStyleForType(type?: string | null) {
@@ -245,68 +188,75 @@ function getDrugValue(drug: GraphPanelDrug | null, keys: string[], fallback: any
   if (!drug) return fallback;
 
   for (const key of keys) {
-    if ((drug as any)[key] !== undefined && (drug as any)[key] !== null && (drug as any)[key] !== '') return (drug as any)[key];
-    if (drug.drug?.[key] !== undefined && drug.drug?.[key] !== null && drug.drug?.[key] !== '') return drug.drug[key];
-    if (drug.scorecard?.[key] !== undefined && drug.scorecard?.[key] !== null && drug.scorecard?.[key] !== '') return drug.scorecard[key];
+    if ((drug as any)[key] !== undefined && (drug as any)[key] !== null && (drug as any)[key] !== '') {
+      return (drug as any)[key];
+    }
+
+    if (drug.drug?.[key] !== undefined && drug.drug?.[key] !== null && drug.drug?.[key] !== '') {
+      return drug.drug[key];
+    }
+
+    if (drug.scorecard?.[key] !== undefined && drug.scorecard?.[key] !== null && drug.scorecard?.[key] !== '') {
+      return drug.scorecard[key];
+    }
   }
 
   return fallback;
 }
 
-function countNodeTypes(graph: GraphPayload | null, types: string[]) {
-  if (!graph) return 0;
-  return graph.nodes.filter((node) => types.includes(normalizeType(node.node_type))).length;
-}
-
-function buildFallbackMetrics(graph: GraphPayload | null): GraphMetrics | null {
-  if (!graph) return null;
-
-  const nodes = graph.nodes || [];
-  const edges = graph.edges || [];
-
-  const classificationNodes = nodes.filter((node) =>
-    ['ATC1', 'ATC2', 'ATC3', 'ATC4', 'ATC5', 'MOA', 'EPC', 'DISEASE', 'PE', 'CHEM', 'VA', 'DISPOS', 'STRUCT'].includes(
-      normalizeType(node.node_type),
-    ),
-  );
-
-  const relationshipNodes = nodes.filter((node) => normalizeType(node.node_type) === 'RELATIONSHIP');
-  const domains = new Set(nodes.map((node) => node.intelligence_domain || node.node_type).filter(Boolean));
-
-  const depth = ['ATC1', 'ATC2', 'ATC3', 'ATC4'].reduce(
-    (max, level, index) =>
-      classificationNodes.some((node) => normalizeType(node.node_type) === level) ? index + 1 : max,
-    0,
-  );
-
-  return {
-    rxcui: graph.center_rxcui,
-    node_count: nodes.length,
-    edge_count: edges.length,
-    classification_node_count: classificationNodes.length,
-    relationship_node_count: relationshipNodes.length,
-    intelligence_domain_count: domains.size,
-    classification_depth: depth,
-    graph_connectivity_score: 0,
-  };
-}
-
-function ringPosition(index: number, total: number, radius: number, centerX: number, centerY: number, startAngle = -Math.PI / 2) {
-  const angle = startAngle + (index / total) * Math.PI * 2;
+function compactRingPosition(
+  index: number,
+  total: number,
+  radius: number,
+  centerX: number,
+  centerY: number,
+  startAngle = -Math.PI / 2,
+) {
+  const safeTotal = Math.max(total, 1);
+  const angle = startAngle + (index / safeTotal) * Math.PI * 2;
 
   return {
     x: centerX + Math.cos(angle) * radius,
     y: centerY + Math.sin(angle) * radius,
+    angle,
   };
 }
 
-function localRingRadius(nodeCount: number) {
-  if (nodeCount <= 1) return 210;
+function compactChildPosition(
+  domainPosition: { x: number; y: number; angle: number },
+  childIndex: number,
+  childCount: number,
+) {
+  const columns = childCount <= 4 ? 2 : 3;
+  const row = Math.floor(childIndex / columns);
+  const col = childIndex % columns;
+  const rows = Math.ceil(childCount / columns);
 
-  const estimatedNodeSpacing = 190;
-  const radiusForNoOverlap = (nodeCount * estimatedNodeSpacing) / (Math.PI * 2);
+  const nodeWidth = 210;
+  const nodeHeight = 78;
+  const horizontalGap = 96;
+  const verticalGap = 70;
 
-  return Math.max(230, radiusForNoOverlap);
+  const gridWidth = columns * nodeWidth + (columns - 1) * horizontalGap;
+  const gridHeight = rows * nodeHeight + (rows - 1) * verticalGap;
+
+  const isRightSide = Math.cos(domainPosition.angle) >= 0;
+  const isBottomSide = Math.sin(domainPosition.angle) >= 0;
+
+  const anchorGap = 320;
+
+  const startX = isRightSide
+    ? domainPosition.x + anchorGap
+    : domainPosition.x - anchorGap - gridWidth;
+
+  const startY = isBottomSide
+    ? domainPosition.y + anchorGap * 0.25 - gridHeight / 2
+    : domainPosition.y - anchorGap * 0.25 - gridHeight / 2;
+
+  return {
+    x: startX + col * (nodeWidth + horizontalGap),
+    y: startY + row * (nodeHeight + verticalGap),
+  };
 }
 
 function getDomainForNode(node: GraphNodeRecord) {
@@ -332,14 +282,7 @@ function isInsightNode(node: GraphNodeRecord | null) {
 }
 
 function getAtcCode(node: GraphNodeRecord) {
-  const raw =
-    node.class_id ||
-    node.rxcui ||
-    node.label ||
-    node.class_name ||
-    node.node_id ||
-    '';
-
+  const raw = node.class_id || node.rxcui || node.label || node.class_name || node.node_id || '';
   const cleaned = String(raw).trim();
   const match = cleaned.match(/[A-Z][0-9]{0,2}[A-Z]{0,2}[0-9]{0,2}/i);
 
@@ -407,8 +350,6 @@ function buildNodeInsight(node: GraphNodeRecord | null, graph: GraphPayload | nu
   const source = node.source_system || node.source || 'RxNorm Intelligence Platform';
   const evidence = node.occurrence_count ?? '—';
   const classId = node.class_id || '—';
-  const score = node.score ?? '—';
-  const tier = node.benchmark_tier || node.score_band || '—';
 
   if (ATC_TYPES.includes(type)) {
     return {
@@ -577,10 +518,10 @@ function convertToReactFlow(
   const visualLookup = new Map<string, GraphNodeRecord>();
   visualNodes.forEach((node) => visualLookup.set(node.node_id, node));
 
-  const centerX = 1600;
-  const centerY = 1600;
-  const maxChildRadius = Math.max(...activeDomains.map((domain) => localRingRadius((childrenByDomain.get(domain.id) || []).length)), 230);
-  const domainRingRadius = Math.max(720, maxChildRadius * 2.15);
+  const centerX = 0;
+  const centerY = 0;
+  const isSingleDomain = activeDomains.length === 1;
+  const domainRingRadius = isSingleDomain ? 360 : activeDomains.length <= 3 ? 470 : activeDomains.length <= 5 ? 560 : 640;
 
   const positions = new Map<string, { x: number; y: number }>();
 
@@ -589,17 +530,16 @@ function convertToReactFlow(
   }
 
   activeDomains.forEach((domain, domainIndex) => {
-    const domainPosition = ringPosition(domainIndex, activeDomains.length, domainRingRadius, centerX, centerY);
-    positions.set(domain.id, domainPosition);
+    const domainPosition = isSingleDomain
+      ? { x: centerX + 430, y: centerY, angle: 0 }
+      : compactRingPosition(domainIndex, activeDomains.length, domainRingRadius, centerX, centerY);
+
+    positions.set(domain.id, { x: domainPosition.x, y: domainPosition.y });
 
     const children = childrenByDomain.get(domain.id) || [];
-    const childRadius = localRingRadius(children.length);
 
     children.forEach((child, childIndex) => {
-      positions.set(
-        child.node_id,
-        ringPosition(childIndex, children.length, childRadius, domainPosition.x, domainPosition.y),
-      );
+      positions.set(child.node_id, compactChildPosition(domainPosition, childIndex, children.length));
     });
   });
 
@@ -619,31 +559,31 @@ function convertToReactFlow(
       data: {
         label: (
           <div>
-            <div style={{ fontSize: isDrug ? 18 : isDomain ? 15 : 11, fontWeight: 900 }}>
+            <div style={{ fontSize: isDrug ? 22 : isDomain ? 18 : 15, fontWeight: 900, lineHeight: 1.15 }}>
               {formatLabel(node.label, node.node_id)}
             </div>
-            <div style={{ marginTop: 4, fontSize: isDrug ? 10 : isDomain ? 10 : 9, opacity: 0.82, fontWeight: 800 }}>
+            <div style={{ marginTop: 6, fontSize: isDrug ? 12 : isDomain ? 11 : 10, opacity: 0.84, fontWeight: 800 }}>
               {nodeTypeLabel(type)}
             </div>
           </div>
         ),
       },
       style: {
-        width: isDrug ? 250 : isDomain ? 190 : 150,
-        minHeight: isDrug ? 92 : isDomain ? 76 : 58,
-        borderRadius: isDrug ? 26 : isDomain ? 22 : 16,
+        width: isDrug ? 310 : isDomain ? 240 : 210,
+        minHeight: isDrug ? 112 : isDomain ? 88 : 76,
+        borderRadius: isDrug ? 30 : isDomain ? 24 : 18,
         border: isSelected ? '3px solid #22d3ee' : `2px solid ${isDrug ? '#60a5fa' : colors.border}`,
         background: colors.background,
         color: colors.color,
         cursor: 'pointer',
         boxShadow: isSelected
-          ? '0 0 0 4px rgba(34, 211, 238, 0.18), 0 0 38px rgba(34, 211, 238, 0.55)'
+          ? '0 0 0 5px rgba(34, 211, 238, 0.20), 0 0 52px rgba(34, 211, 238, 0.68)'
           : isDrug
-            ? '0 0 0 3px rgba(37, 99, 235, 0.16), 0 20px 60px rgba(37, 99, 235, 0.38)'
+            ? '0 0 0 4px rgba(37, 99, 235, 0.18), 0 22px 70px rgba(37, 99, 235, 0.46)'
             : isDomain
-              ? '0 0 0 3px rgba(148, 163, 184, 0.10), 0 16px 42px rgba(2, 6, 23, 0.52)'
-              : '0 10px 28px rgba(2, 6, 23, 0.45)',
-        padding: isDrug ? 14 : 10,
+              ? '0 0 0 4px rgba(148, 163, 184, 0.12), 0 18px 48px rgba(2, 6, 23, 0.58)'
+              : '0 12px 34px rgba(2, 6, 23, 0.48)',
+        padding: isDrug ? 18 : isDomain ? 14 : 12,
         transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease',
       },
     };
@@ -660,9 +600,9 @@ function convertToReactFlow(
         animated: true,
         markerEnd: { type: MarkerType.ArrowClosed },
         style: {
-          strokeWidth: 2.2,
+          strokeWidth: 2.8,
           stroke: '#38bdf8',
-          opacity: 0.72,
+          opacity: 0.8,
         },
       });
 
@@ -675,9 +615,9 @@ function convertToReactFlow(
           target: child.node_id,
           markerEnd: { type: MarkerType.ArrowClosed },
           style: {
-            strokeWidth: 1.2,
+            strokeWidth: 1.7,
             stroke: getStyleForType(domain.type).border,
-            opacity: 0.54,
+            opacity: 0.66,
           },
         });
       });
@@ -692,11 +632,13 @@ function AutoFitGraph({
   edges,
   enabledTypes,
   viewMode,
+  selectedDomain,
 }: {
   nodes: Node[];
   edges: Edge[];
   enabledTypes: Set<string>;
   viewMode: ViewMode;
+  selectedDomain: DomainLabel;
 }) {
   const { fitView } = useReactFlow();
 
@@ -705,39 +647,48 @@ function AutoFitGraph({
 
     const timeout = window.setTimeout(() => {
       fitView({
-        padding: 0.18,
-        duration: 550,
+        padding: viewMode === 'full' ? 0.04 : 0.015,
+        duration: 450,
         includeHiddenNodes: false,
       });
     }, 80);
 
     return () => window.clearTimeout(timeout);
-  }, [nodes.length, edges.length, enabledTypes, viewMode, fitView]);
+  }, [nodes.length, edges.length, enabledTypes, viewMode, selectedDomain, fitView]);
 
   return null;
 }
 
 export default function GraphPanel({ drug }: { drug: GraphPanelDrug | null }) {
   const [graph, setGraph] = useState<GraphPayload | null>(drug?.graph || null);
-  const [metrics, setMetrics] = useState<GraphMetrics | null>(buildFallbackMetrics(drug?.graph || null));
   const [selectedNode, setSelectedNode] = useState<GraphNodeRecord | null>(null);
   const [popupNode, setPopupNode] = useState<GraphNodeRecord | null>(null);
-  const [enabledTypes, setEnabledTypes] = useState<Set<string>>(new Set(VIEW_MODES.executive.types));
   const [viewMode, setViewMode] = useState<ViewMode>('executive');
+  const [selectedDomain, setSelectedDomain] = useState<DomainLabel>('Disease');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const rxcui = drug?.rxcui;
 
+  const enabledTypes = useMemo(() => {
+    if (viewMode === 'full') {
+      return new Set(NODE_TYPES.filter((type) => type !== 'DRUG'));
+    }
+
+    const domain = VISUAL_DOMAINS.find((item) => item.label === selectedDomain);
+    return new Set(domain?.childTypes || ['DISEASE', 'PE']);
+  }, [viewMode, selectedDomain]);
+
   useEffect(() => {
     setGraph(drug?.graph || null);
-    setMetrics(buildFallbackMetrics(drug?.graph || null));
     setPopupNode(null);
     setSelectedNode(
       drug?.graph?.nodes?.find((node) => normalizeType(node.node_type) === 'DRUG') ||
         drug?.graph?.nodes?.[0] ||
         null,
     );
+    setViewMode('executive');
+    setSelectedDomain('Disease');
   }, [drug?.rxcui]);
 
   useEffect(() => {
@@ -750,21 +701,19 @@ export default function GraphPanel({ drug }: { drug: GraphPanelDrug | null }) {
       setError(null);
 
       try {
-        const [graphResponse, metricsResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/graph/subgraph/${encodeURIComponent(rxcui)}?edge_limit=250`),
-          fetch(`${API_BASE_URL}/graph/metrics/${encodeURIComponent(rxcui)}`),
-        ]);
+        const graphResponse = await fetch(
+          `${API_BASE_URL}/graph/subgraph/${encodeURIComponent(rxcui)}?edge_limit=250`,
+        );
 
-        if (!graphResponse.ok) throw new Error(`Graph request failed with status ${graphResponse.status}`);
-        if (!metricsResponse.ok) throw new Error(`Graph metrics request failed with status ${metricsResponse.status}`);
+        if (!graphResponse.ok) {
+          throw new Error(`Graph request failed with status ${graphResponse.status}`);
+        }
 
         const graphPayload = (await graphResponse.json()) as GraphPayload;
-        const metricsPayload = (await metricsResponse.json()) as GraphMetrics;
 
         if (!active) return;
 
         setGraph(graphPayload);
-        setMetrics(metricsPayload);
         setPopupNode(null);
         setSelectedNode(
           graphPayload.nodes?.find((node) => normalizeType(node.node_type) === 'DRUG') ||
@@ -793,58 +742,16 @@ export default function GraphPanel({ drug }: { drug: GraphPanelDrug | null }) {
 
   const popupInsight = useMemo(() => buildNodeInsight(popupNode, graph), [popupNode, graph]);
 
-  const intelligenceScore = toNumber(
-    getDrugValue(drug, ['overall_intelligence_score', 'intelligence_score', 'graph_intelligence_score'], metrics?.graph_connectivity_score ?? 0),
-  );
-
-  const therapeuticClasses = countNodeTypes(graph, ['ATC1', 'ATC2', 'ATC3', 'ATC4']);
-  const diseaseMappings = countNodeTypes(graph, ['DISEASE']);
-  const mechanisms = countNodeTypes(graph, ['MOA', 'EPC']);
-  const relationships = countNodeTypes(graph, ['RELATIONSHIP']);
-
-  const totalEvidence =
-    graph?.nodes?.reduce((sum, node) => sum + toNumber(node.occurrence_count, 0), 0) ||
-    toNumber(selectedNode?.occurrence_count, 0) ||
-    0;
-
-  const drugName = String(
-    selectedNode?.label ||
-      getDrugValue(drug, ['rxnorm_name', 'drug_name', 'name', 'label'], 'Selected medication'),
-  );
-
-  const selectedTier =
-    selectedNode?.benchmark_tier ||
-    selectedNode?.score_band ||
-    String(getDrugValue(drug, ['benchmark_tier', 'tier'], scoreLabel(intelligenceScore)));
-
-  const selectedSource =
-    selectedNode?.source_system ||
-    selectedNode?.source ||
-    String(getDrugValue(drug, ['source_system', 'source'], 'RxNorm Intelligence Platform'));
-
-  const classificationCoverage =
-    (metrics?.classification_depth ?? 0) >= 4 ? 'Complete' : `${metrics?.classification_depth ?? 0}/4`;
-
-  function applyViewMode(mode: ViewMode) {
-    setViewMode(mode);
-    setEnabledTypes(new Set(VIEW_MODES[mode].types));
+  function selectDomain(domain: DomainLabel) {
+    setSelectedDomain(domain);
+    setViewMode('executive');
     setPopupNode(null);
   }
 
-  function toggleDomainGroup(types: string[]) {
-    setEnabledTypes((current) => {
-      const next = new Set(current);
-      const allActive = types.every((type) => next.has(type));
-
-      types.forEach((type) => {
-        if (allActive) next.delete(type);
-        else next.add(type);
-      });
-
-      setViewMode('full');
-      setPopupNode(null);
-      return next;
-    });
+  function resetGraph() {
+    setViewMode('executive');
+    setSelectedDomain('Disease');
+    setPopupNode(null);
   }
 
   if (!drug) {
@@ -894,176 +801,90 @@ export default function GraphPanel({ drug }: { drug: GraphPanelDrug | null }) {
         }
       `}</style>
 
-      <div className="p-6">
-        <div className="flex flex-col gap-5">
-          <button
-            type="button"
-            onClick={() => applyViewMode('executive')}
-            className="mx-auto min-h-[150px] w-full max-w-4xl rounded-3xl border border-blue-500/50 bg-[radial-gradient(circle_at_top_right,_rgba(37,99,235,0.28),_transparent_38%),linear-gradient(135deg,#020617,#0f172a)] p-6 text-center shadow-xl shadow-blue-950/20 transition hover:-translate-y-1 hover:border-cyan-400/70 hover:shadow-cyan-950/30"
-          >
-            <p className="text-xs font-black uppercase tracking-[0.26em] text-blue-300">
-              Medication Intelligence Score
+      <div className="border-y border-slate-800 bg-slate-950/40 p-6">
+        <div className="grid gap-6 xl:grid-cols-[1fr_auto] xl:items-end xl:justify-between">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-cyan-300">
+              Current Domain
             </p>
-
-            <p className="mt-3 text-6xl font-black leading-none text-white">
-              {intelligenceScore.toFixed(0)}
+            <h4 className="mt-2 text-2xl font-black text-white">
+              {viewMode === 'full' ? 'Full Knowledge Graph' : selectedDomain}
+            </h4>
+            <p className="mt-2 text-sm font-semibold text-slate-400">
+              {viewMode === 'full'
+                ? 'Power-user view showing all available graph domains and relationship evidence.'
+                : `Executive view focused only on the ${selectedDomain} domain for a larger, clearer graph.`}
             </p>
+          </div>
 
-            <p className="mt-3 text-2xl font-black text-blue-100">
-              {scoreLabel(intelligenceScore)}
-            </p>
-
-            <p className="mx-auto mt-5 max-w-3xl text-sm font-semibold leading-6 text-slate-400">
-              Primary summary of the medication intelligence profile across classifications,
-              graph evidence, clinical signals, and AI-readiness.
-            </p>
-          </button>
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <ShortcutMetric
-              label="Therapeutic Classes"
-              value={therapeuticClasses}
-              helper="ATC hierarchy"
-              onClick={() => applyViewMode('hierarchy')}
-            />
-
-            <ShortcutMetric
-              label="Disease Mappings"
-              value={diseaseMappings}
-              helper="Clinical associations"
-              onClick={() => applyViewMode('disease')}
-            />
-
-            <ShortcutMetric
-              label="Mechanisms"
-              value={mechanisms}
-              helper="MOA + EPC"
+          <div className="flex flex-wrap gap-2 xl:justify-end">
+            <button
+              type="button"
               onClick={() => {
-                setViewMode('full');
-                setEnabledTypes(new Set(['MOA', 'EPC']));
+                setViewMode('executive');
                 setPopupNode(null);
               }}
-            />
+              className={`rounded-full border px-5 py-2 text-xs font-black transition ${
+                viewMode === 'executive'
+                  ? 'border-blue-400 bg-blue-600 text-white shadow-lg shadow-blue-950/30'
+                  : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-blue-700 hover:bg-blue-950/40'
+              }`}
+            >
+              Executive View
+            </button>
 
-            <ShortcutMetric
-              label="Relationships"
-              value={relationships}
-              helper="RxNorm concepts"
-              onClick={() => applyViewMode('rxnorm')}
-            />
+            <button
+              type="button"
+              onClick={() => {
+                setViewMode('full');
+                setPopupNode(null);
+              }}
+              className={`rounded-full border px-5 py-2 text-xs font-black transition ${
+                viewMode === 'full'
+                  ? 'border-cyan-400 bg-cyan-600 text-white shadow-lg shadow-cyan-950/30'
+                  : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-cyan-700 hover:bg-cyan-950/40'
+              }`}
+            >
+              Full View
+            </button>
           </div>
         </div>
 
-        <div className="mt-5 rounded-3xl border border-slate-700 bg-slate-950/70 p-5">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-blue-300">Selected Medication</p>
+        <div className="mt-6">
+          <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-blue-200">
+            Select One Domain
+          </h4>
 
-          <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h4 className="text-3xl font-black leading-tight text-white">{drugName}</h4>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {VISUAL_DOMAINS.map((domain) => {
+              const active = viewMode === 'executive' && selectedDomain === domain.label;
+              const style = getStyleForType(domain.type);
 
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="rounded-full border border-blue-500/60 bg-blue-950/70 px-3 py-1 text-xs font-black text-blue-100">
-                  Tier: {selectedTier}
-                </span>
-                <span className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-black text-slate-300">
-                  Source: {selectedSource}
-                </span>
-                <span className="rounded-full border border-emerald-500/50 bg-emerald-950/50 px-3 py-1 text-xs font-black text-emerald-200">
-                  Evidence: {selectedNode?.occurrence_count ?? totalEvidence ?? '—'}
-                </span>
-                <span className="rounded-full border border-cyan-500/50 bg-cyan-950/50 px-3 py-1 text-xs font-black text-cyan-200">
-                  Classification Coverage: {classificationCoverage}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid gap-2 text-sm text-slate-300 sm:grid-cols-2 lg:text-right">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Node ID</p>
-                <p className="font-semibold text-slate-200">{selectedNode?.node_id || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Domain</p>
-                <p className="font-semibold text-slate-200">
-                  {selectedNode?.intelligence_domain || nodeTypeLabel(selectedNode?.node_type)}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="border-y border-slate-800 bg-slate-950/40 p-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-blue-200">Visible Domains</h4>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {DOMAIN_GROUPS.map((group) => {
-                const active = group.types.some((type) => enabledTypes.has(type));
-                const visualDomain = VISUAL_DOMAINS.find((domain) => domain.childTypes.some((type) => group.types.includes(type)));
-                const style = getStyleForType(visualDomain?.type || group.types[0]);
-
-                return (
-                  <button
-                    key={group.label}
-                    type="button"
-                    onClick={() => toggleDomainGroup(group.types)}
-                    className="rounded-full border px-4 py-2 text-xs font-black transition hover:scale-105"
-                    style={{
-                      background: active ? style.background : '#020617',
-                      borderColor: active ? style.border : '#334155',
-                      color: active ? style.color : '#94a3b8',
-                    }}
-                  >
-                    {group.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-blue-200">Graph View Mode</h4>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(Object.keys(VIEW_MODES) as ViewMode[]).map((mode) => {
-                const active = viewMode === mode;
-
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => applyViewMode(mode)}
-                    className={`rounded-full border px-4 py-2 text-xs font-black transition ${
-                      active
-                        ? 'border-blue-400 bg-blue-600 text-white shadow-lg shadow-blue-950/30'
-                        : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-blue-700 hover:bg-blue-950/40'
-                    }`}
-                  >
-                    {VIEW_MODES[mode].label}
-                  </button>
-                );
-              })}
-            </div>
+              return (
+                <button
+                  key={domain.label}
+                  type="button"
+                  onClick={() => selectDomain(domain.label)}
+                  className="rounded-full border px-4 py-2 text-xs font-black transition hover:scale-105"
+                  style={{
+                    background: active ? style.background : '#020617',
+                    borderColor: active ? style.border : '#334155',
+                    color: active ? style.color : '#94a3b8',
+                  }}
+                >
+                  {domain.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
       <div className="p-6">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-blue-300">Knowledge Graph</p>
-            <h4 className="mt-1 text-xl font-black text-white">Interactive Three-Ring Medication Network</h4>
-            <p className="mt-2 text-sm font-semibold text-slate-400">
-              Ring 1: selected drug. Ring 2: intelligence domains. Ring 3: related values. Click any node for details.
-            </p>
-          </div>
-
+        <div className="mb-4 flex justify-end">
           <button
             type="button"
-            onClick={() => {
-              applyViewMode('executive');
-              setPopupNode(null);
-            }}
+            onClick={resetGraph}
             className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800"
           >
             Reset graph
@@ -1072,7 +893,7 @@ export default function GraphPanel({ drug }: { drug: GraphPanelDrug | null }) {
 
         {loading && (
           <div className="rounded-2xl border border-slate-700 bg-slate-950 p-5 text-sm text-slate-400">
-            Loading graph intelligence from `/graph/subgraph/{'{rxcui}'}` and `/graph/metrics/{'{rxcui}'}`…
+            Loading graph intelligence from `/graph/subgraph/{'{rxcui}'}`…
           </div>
         )}
 
@@ -1084,7 +905,7 @@ export default function GraphPanel({ drug }: { drug: GraphPanelDrug | null }) {
 
         {!loading && !error && (
           <div
-            className="relative h-[680px] overflow-hidden rounded-3xl border border-slate-700 bg-slate-950"
+            className="relative h-[620px] overflow-hidden rounded-3xl border border-slate-700 bg-slate-950"
             onMouseLeave={() => setPopupNode(null)}
           >
             <div className="pointer-events-none absolute right-5 top-5 z-20 rounded-full border border-cyan-400/40 bg-cyan-950/50 px-4 py-2 text-xs font-black uppercase tracking-wide text-cyan-100 shadow-lg shadow-cyan-950/30">
@@ -1092,10 +913,7 @@ export default function GraphPanel({ drug }: { drug: GraphPanelDrug | null }) {
             </div>
 
             {popupInsight && (
-              <NodeInsightPopup
-                insight={popupInsight}
-                onClose={() => setPopupNode(null)}
-              />
+              <NodeInsightPopup insight={popupInsight} onClose={() => setPopupNode(null)} />
             )}
 
             <ReactFlowProvider>
@@ -1104,15 +922,16 @@ export default function GraphPanel({ drug }: { drug: GraphPanelDrug | null }) {
                 edges={flow.edges}
                 enabledTypes={enabledTypes}
                 viewMode={viewMode}
+                selectedDomain={selectedDomain}
               />
 
               <ReactFlow
                 nodes={flow.nodes}
                 edges={flow.edges}
                 fitView
-                fitViewOptions={{ padding: 0.2 }}
-                minZoom={0.015}
-                maxZoom={1.35}
+                fitViewOptions={{ padding: viewMode === 'full' ? 0.04 : 0.015 }}
+                minZoom={0.05}
+                maxZoom={2.5}
                 onPaneClick={() => setPopupNode(null)}
                 onNodeClick={(_, node) => {
                   const record = flow.visualLookup.get(node.id) || null;
@@ -1218,37 +1037,5 @@ function NodeInsightPopup({
         {insight.footer}
       </p>
     </div>
-  );
-}
-
-function ShortcutMetric({
-  label,
-  value,
-  helper,
-  onClick,
-}: {
-  label: string;
-  value: string | number;
-  helper: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-2xl border border-slate-700 bg-slate-950 p-4 text-center shadow-sm transition hover:-translate-y-1 hover:border-blue-500/70 hover:bg-blue-950/30"
-    >
-      <p className="text-[11px] font-black uppercase tracking-wide text-slate-400">
-        {label}
-      </p>
-
-      <p className="mt-3 text-4xl font-black leading-none text-white">
-        {value}
-      </p>
-
-      <p className="mt-2 text-xs font-semibold text-blue-200">
-        {helper}
-      </p>
-    </button>
   );
 }

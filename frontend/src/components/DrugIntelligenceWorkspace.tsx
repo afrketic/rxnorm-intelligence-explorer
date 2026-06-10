@@ -1,20 +1,12 @@
-import { useMemo, useState } from 'react';
 import { DrugCard } from '../lib/api';
 import SafeCardBoundary from './SafeCardBoundary';
-import MedicationIntelligenceSummaryCard from './MedicationIntelligenceSummaryCard';
-import RelationshipPanel from './RelationshipPanel';
-import GraphPanel from './GraphPanel';
-import ExplainabilityEngineCard from './ExplainabilityEngineCard';
-import MedicationReadinessScorecard from './MedicationReadinessScorecard';
-import ConfidenceScorecard from './ConfidenceScorecard';
-import PCAMethodologyScorecard from './PCAMethodologyScorecard';
-import MethodologyConsensusCard from './MethodologyConsensusCard';
-import AICopilotCard from './AICopilotCard';
-import MethodologySelectionCard from './MethodologySelectionCard';
 import ClaimsReadinessDashboard from './ClaimsReadinessDashboard';
 import AIReadinessDashboard from './AIReadinessDashboard';
 import ClinicalIntelligenceDashboard from './ClinicalIntelligenceDashboard';
 import EnterpriseIntelligenceDashboard from './EnterpriseIntelligenceDashboard';
+import EnterpriseHealthcareImportanceCard from './EnterpriseHealthcareImportanceCard';
+import EvidenceValidationDashboard from './EvidenceValidationDashboard';
+import KnowledgeGraphDashboard from './KnowledgeGraphDashboard';
 
 type WorkspaceTab =
   | 'overview'
@@ -22,30 +14,21 @@ type WorkspaceTab =
   | 'ai'
   | 'clinical'
   | 'knowledge'
-  | 'enterprise';
+  | 'enterprise'
+  | 'validation';
 
 type Props = {
   drug: (DrugCard & Record<string, any>) | null;
+  activeTab: WorkspaceTab;
   onSelectSimilarDrug?: (drug: DrugCard) => void;
 };
-
-const WORKSPACE_TABS: Array<{
-  id: WorkspaceTab;
-  label: string;
-  description: string;
-}> = [
-  { id: 'overview', label: 'Overview', description: 'Executive snapshot + medication identity' },
-  { id: 'claims', label: 'Claims Readiness', description: 'Enterprise analytics readiness' },
-  { id: 'ai', label: 'AI Readiness', description: 'Explainability, semantic richness, confidence, methods' },
-  { id: 'clinical', label: 'Clinical Intelligence', description: 'ATC, disease, MOA, EPC, and peers' },
-  { id: 'knowledge', label: 'Knowledge Graph', description: 'Graph structure + RxNorm relationships' },
-  { id: 'enterprise', label: 'Enterprise Intelligence', description: 'Portfolio, deployment, validation, and publication strategy' },
-];
 
 function EmptyState() {
   return (
     <section className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 text-white shadow-sm">
-      <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-300">Workspace</p>
+      <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-300">
+        Workspace
+      </p>
       <h3 className="mt-2 text-2xl font-black">Select a medication</h3>
       <p className="mt-2 text-sm leading-6 text-slate-300">
         Search for a medication to activate the intelligence workspace.
@@ -54,54 +37,17 @@ function EmptyState() {
   );
 }
 
-export default function DrugIntelligenceWorkspace({ drug, onSelectSimilarDrug }: Props) {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>('overview');
-
-  const active = useMemo(
-    () => WORKSPACE_TABS.find((tab) => tab.id === activeTab) || WORKSPACE_TABS[0],
-    [activeTab]
-  );
-
+export default function DrugIntelligenceWorkspace({
+  drug,
+  activeTab,
+  onSelectSimilarDrug,
+}: Props) {
   if (!drug) return <EmptyState />;
 
   return (
-    <section className="space-y-3">
-      <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-3 shadow-sm">
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {WORKSPACE_TABS.map((tab) => {
-            const isActive = activeTab === tab.id;
-
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`min-w-fit rounded-2xl border px-4 py-3 text-left transition ${
-                  isActive
-                    ? 'border-blue-500 bg-blue-500 text-white shadow-lg shadow-blue-950/40'
-                    : 'border-slate-700 bg-slate-950/70 text-slate-300 hover:border-blue-700 hover:bg-blue-950/40'
-                }`}
-              >
-                <span className="block text-sm font-black">{tab.label}</span>
-                <span className={`mt-1 block text-xs font-semibold ${isActive ? 'text-blue-100' : 'text-slate-500'}`}>
-                  {tab.description}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="rounded-3xl border border-blue-900/40 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950/70 p-6 text-white shadow-sm">
-        <p className="text-xs font-black uppercase tracking-[0.28em] text-blue-300">Drug Intelligence Workspace</p>
-        <h2 className="mt-2 text-3xl font-black tracking-tight">{active.label}</h2>
-        <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-300">{active.description}</p>
-      </div>
-
+    <section className="space-y-6">
       {activeTab === 'overview' && (
-        <SafeCardBoundary title="Medication Intelligence Profile">
-          <MedicationIntelligenceSummaryCard drug={drug} />
-        </SafeCardBoundary>
+        <EnterpriseHealthcareImportanceCard drug={drug} />
       )}
 
       {activeTab === 'claims' && (
@@ -111,56 +57,40 @@ export default function DrugIntelligenceWorkspace({ drug, onSelectSimilarDrug }:
       )}
 
       {activeTab === 'ai' && (
-        <>
-          <SafeCardBoundary title="AI Readiness Dashboard">
-            <AIReadinessDashboard drug={drug} />
-          </SafeCardBoundary>
-
-          <SafeCardBoundary title="Explainability Engine">
-            <ExplainabilityEngineCard drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="Medication Readiness Scorecard">
-            <MedicationReadinessScorecard drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="Confidence Engine">
-            <ConfidenceScorecard drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="PCA Model Framework">
-            <PCAMethodologyScorecard drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="Methodology Consensus Engine">
-            <MethodologyConsensusCard drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="Methodology Selection Engine">
-            <MethodologySelectionCard drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="AI Copilot Brief">
-            <AICopilotCard drug={drug} />
-          </SafeCardBoundary>
-        </>
+        <SafeCardBoundary title="AI Readiness Dashboard">
+          <AIReadinessDashboard drug={drug} />
+        </SafeCardBoundary>
       )}
 
       {activeTab === 'clinical' && (
         <SafeCardBoundary title="Clinical Intelligence Dashboard">
           <ClinicalIntelligenceDashboard
             drug={drug}
-            onSelectSimilarDrug={(similarDrug) => onSelectSimilarDrug?.(similarDrug as DrugCard)}
+            onSelectSimilarDrug={(similarDrug) =>
+              onSelectSimilarDrug?.(similarDrug as DrugCard)
+            }
           />
         </SafeCardBoundary>
       )}
 
       {activeTab === 'knowledge' && (
-        <>
-          <SafeCardBoundary title="Knowledge Graph Intelligence" subtitle="Clinical domains • classifications • relationships">
-            <GraphPanel drug={drug} />
-          </SafeCardBoundary>
-          <SafeCardBoundary title="RxNorm Relationship Intelligence">
-            <RelationshipPanel drug={drug} />
-          </SafeCardBoundary>
-        </>
+        <SafeCardBoundary title="Knowledge Graph Intelligence">
+          <KnowledgeGraphDashboard drug={drug} />
+        </SafeCardBoundary>
       )}
 
-      {activeTab === 'enterprise' && <EnterpriseIntelligenceDashboard drug={drug} />}
+      {activeTab === 'enterprise' && (
+        <EnterpriseIntelligenceDashboard drug={drug} />
+      )}
+
+      {activeTab === 'validation' && (
+        <SafeCardBoundary
+          title="Evidence & Validation"
+          subtitle="Methodology • explainability • statistical validation"
+        >
+          <EvidenceValidationDashboard drug={drug} />
+        </SafeCardBoundary>
+      )}
     </section>
   );
 }

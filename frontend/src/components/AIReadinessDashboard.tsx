@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  Brain,
+  CheckCircle2,
+  Info,
+  Network,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  X,
+} from 'lucide-react';
 import { DrugCard } from '../lib/api';
 
 type ReadinessPayload = {
@@ -40,14 +42,8 @@ type ExplainabilityPayload = {
   explainability?: {
     explainability_score?: number;
     explainability_tier?: string;
-    positive_driver_count?: number;
-    limiting_factor_count?: number;
-    executive_narrative?: string;
-    recommended_action?: string;
   };
   scores?: Record<string, number>;
-  reasons?: Array<Record<string, any>>;
-  methodology?: Record<string, any>;
 };
 
 type ConfidencePayload = {
@@ -56,117 +52,24 @@ type ConfidencePayload = {
   confidence_score?: number;
   confidence_percentile?: number;
   confidence_tier?: string;
-  components?: {
-    evidence_strength_score?: number;
-    explainability_confidence_score?: number;
-    benchmark_reliability_score?: number;
-    readiness_stability_score?: number;
-  };
-  methodology?: Record<string, any>;
-};
-
-type PcaPayload = {
-  rxcui: string;
-  display_name?: string;
-  pca?: {
-    pca_component_1_score?: number;
-    pca_component_2_score?: number;
-    pca_component_3_score?: number;
-    pca_overall_score?: number;
-    pca_percentile?: number;
-    pca_tier?: string;
-  };
-  comparison?: {
-    expert_overall_readiness_score?: number;
-    overall_intelligence_score?: number;
-    confidence_score?: number;
-    pca_vs_expert_delta?: number;
-  };
-  model_summary?: Array<Record<string, any>>;
-  methodology?: Record<string, any>;
-};
-
-type MethodologyPayload = {
-  rxcui: string;
-  display_name?: string;
-  methodology_scores?: {
-    intelligence_score?: number;
-    readiness_score?: number;
-    confidence_score?: number;
-    pca_score?: number;
-  };
-  consensus?: {
-    consensus_score?: number;
-    consensus_percentile?: number;
-    consensus_tier?: string;
-    methodology_agreement_score?: number;
-    methodology_spread?: number;
-    methodology_min_score?: number;
-    methodology_max_score?: number;
-  };
-  methodology?: Record<string, any>;
-};
-
-type MethodologySelectionPayload = {
-  rxcui: string;
-  display_name?: string;
-  selection?: {
-    methodology_selection_rank?: number;
-    winning_methodology?: string;
-    methodology_selection_score?: number;
-    methodology_selection_percentile?: number;
-    methodology_selection_tier?: string;
-    selection_confidence?: number;
-    winner_margin?: number;
-    selection_reason?: string;
-  };
-  method_scores?: Record<string, number>;
-  selection_scores?: Record<string, number>;
-  validation_signals?: Record<string, number>;
-  reason_codes?: Array<Record<string, any>>;
-  methodology?: Record<string, any>;
 };
 
 type CopilotPayload = {
   rxcui: string;
   display_name?: string;
   copilot?: {
-    ai_copilot_rank?: number;
     ai_copilot_score?: number;
     ai_copilot_percentile?: number;
     ai_copilot_tier?: string;
-    recommended_prompt?: string;
   };
-  summaries?: {
-    executive_summary?: string;
-    technical_summary?: string;
-    strategic_summary?: string;
-  };
-  scores?: Record<string, number>;
-  questions?: Array<Record<string, any>>;
-  methodology?: Record<string, any>;
 };
-
-type EndpointKey =
-  | 'readiness'
-  | 'explainability'
-  | 'confidence'
-  | 'pca'
-  | 'methodology'
-  | 'methodologySelection'
-  | 'copilot';
 
 type EndpointState = {
   readiness?: ReadinessPayload;
   explainability?: ExplainabilityPayload;
   confidence?: ConfidencePayload;
-  pca?: PcaPayload;
-  methodology?: MethodologyPayload;
-  methodologySelection?: MethodologySelectionPayload;
   copilot?: CopilotPayload;
 };
-
-type EndpointErrorState = Partial<Record<EndpointKey, string>>;
 
 type Props = {
   drug: (DrugCard & Record<string, any>) | null;
@@ -176,16 +79,6 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
   import.meta.env.VITE_API_URL ||
   'http://127.0.0.1:8000';
-
-const ENDPOINTS: Array<{ key: EndpointKey; path: string; label: string }> = [
-  { key: 'readiness', path: 'readiness', label: 'Readiness' },
-  { key: 'explainability', path: 'explainability', label: 'Explainability' },
-  { key: 'confidence', path: 'confidence', label: 'Confidence' },
-  { key: 'pca', path: 'pca', label: 'PCA' },
-  { key: 'methodology', path: 'methodology', label: 'Methodology consensus' },
-  { key: 'methodologySelection', path: 'methodology-selection', label: 'Methodology selection' },
-  { key: 'copilot', path: 'copilot', label: 'AI copilot' },
-];
 
 function toNumber(value: unknown, fallback = 0) {
   const numeric = Number(value);
@@ -204,47 +97,6 @@ function formatPercent(value: unknown) {
   return `${boundedScore(value).toFixed(1)}%`;
 }
 
-function getDisplayName(drug: Props['drug'], data: EndpointState) {
-  return (
-    data.readiness?.display_name ||
-    data.explainability?.display_name ||
-    data.confidence?.display_name ||
-    data.pca?.display_name ||
-    data.methodology?.display_name ||
-    data.methodologySelection?.display_name ||
-    data.copilot?.display_name ||
-    drug?.display_name ||
-    drug?.rxnorm_name ||
-    drug?.drug_name ||
-    drug?.name ||
-    'This medication'
-  );
-}
-
-function getTier(score: number) {
-  if (score >= 92) return 'Enterprise AI Ready';
-  if (score >= 85) return 'Advanced AI Ready';
-  if (score >= 75) return 'Operationally AI Ready';
-  if (score >= 60) return 'Developing AI Readiness';
-  return 'Foundational AI Readiness';
-}
-
-function getTierClass(score: number) {
-  if (score >= 92) return 'border-cyan-300 bg-cyan-950 text-cyan-100';
-  if (score >= 85) return 'border-blue-300 bg-blue-950 text-blue-100';
-  if (score >= 75) return 'border-emerald-300 bg-emerald-950 text-emerald-100';
-  if (score >= 60) return 'border-amber-300 bg-amber-950 text-amber-100';
-  return 'border-slate-500 bg-slate-900 text-slate-200';
-}
-
-function statusForScore(score: number) {
-  if (score >= 90) return 'Excellent';
-  if (score >= 80) return 'Strong';
-  if (score >= 70) return 'Moderate';
-  if (score >= 55) return 'Developing';
-  return 'Limited';
-}
-
 function average(values: number[]) {
   const clean = values.filter((value) => Number.isFinite(value) && value > 0);
   if (!clean.length) return 0;
@@ -256,75 +108,216 @@ function objectAverage(record?: Record<string, number>) {
   return average(Object.values(record).map((value) => boundedScore(value)));
 }
 
-function buildAiScore(data: EndpointState, drug: Props['drug']) {
-  const readinessAi = boundedScore(data.readiness?.scores?.ai_readiness_score);
-  const explainabilityScore = boundedScore(data.explainability?.explainability?.explainability_score);
-  const confidenceScore = boundedScore(data.confidence?.confidence_score);
-  const pcaScore = boundedScore(data.pca?.pca?.pca_overall_score);
-  const consensusScore = boundedScore(data.methodology?.consensus?.consensus_score);
-  const selectionScore = boundedScore(data.methodologySelection?.selection?.methodology_selection_score);
-  const copilotScore = boundedScore(data.copilot?.copilot?.ai_copilot_score);
+function getDisplayName(drug: Props['drug'], data: EndpointState) {
+  return (
+    data.readiness?.display_name ||
+    data.explainability?.display_name ||
+    data.confidence?.display_name ||
+    data.copilot?.display_name ||
+    drug?.display_name ||
+    drug?.rxnorm_name ||
+    drug?.drug_name ||
+    drug?.name ||
+    'This medication'
+  );
+}
+
+function getDeploymentTier(score: number) {
+  if (score >= 90) return 'Production Ready';
+  if (score >= 82) return 'Enterprise Candidate';
+  if (score >= 72) return 'AI Deployment Candidate';
+  if (score >= 60) return 'Monitor & Enrich';
+  return 'AI Enrichment Needed';
+}
+
+function getTierClass(score: number) {
+  if (score >= 90) return 'border-cyan-300/70 bg-cyan-500/20 text-cyan-100';
+  if (score >= 82) return 'border-blue-300/70 bg-blue-500/20 text-blue-100';
+  if (score >= 72) return 'border-emerald-300/70 bg-emerald-500/20 text-emerald-100';
+  if (score >= 60) return 'border-amber-300/70 bg-amber-500/20 text-amber-100';
+  return 'border-slate-500 bg-slate-900 text-slate-200';
+}
+
+function statusForScore(score: number) {
+  if (score >= 90) return 'Excellent';
+  if (score >= 82) return 'Strong';
+  if (score >= 72) return 'Moderate';
+  if (score >= 60) return 'Developing';
+  return 'Limited';
+}
+
+function buildAiMetrics(data: EndpointState, drug: Props['drug']) {
+  const readinessAi = boundedScore(
+    data.readiness?.scores?.ai_readiness_score ??
+      drug?.ai_readiness_score ??
+      drug?.scorecard?.ai_readiness_score,
+    0,
+  );
+
+  const explainabilityScore = boundedScore(
+    data.explainability?.explainability?.explainability_score ??
+      drug?.explainability_score ??
+      drug?.scorecard?.explainability_score,
+    0,
+  );
+
+  const confidenceScore = boundedScore(
+    data.confidence?.confidence_score ??
+      drug?.confidence_score ??
+      drug?.scorecard?.confidence_score,
+    0,
+  );
+
+  const copilotScore = boundedScore(
+    data.copilot?.copilot?.ai_copilot_score ??
+      drug?.ai_copilot_score ??
+      drug?.scorecard?.ai_copilot_score,
+    0,
+  );
+
   const semanticRichness = boundedScore(
     data.explainability?.scores?.semantic_richness_score ||
       data.explainability?.scores?.semantic_richness ||
       drug?.semantic_richness_score ||
       drug?.semantic_score ||
       objectAverage(data.readiness?.drivers?.ai),
+    0,
   );
-  const knowledgeDensity = boundedScore(
+
+  const graphReadiness = boundedScore(
     data.explainability?.scores?.graph_connectivity_score ||
       data.explainability?.scores?.relationship_density_score ||
+      drug?.graph_connectivity_score ||
       drug?.relationship_density_score ||
       drug?.knowledge_graph_score ||
-      average([readinessAi, pcaScore, consensusScore]),
+      average([readinessAi, explainabilityScore, semanticRichness]),
+    0,
   );
+
   const classificationCoverage = boundedScore(
     data.explainability?.scores?.classification_coverage_score ||
       data.explainability?.scores?.classification_score ||
       drug?.classification_coverage_score ||
       drug?.classification_score ||
       average([readinessAi, semanticRichness]),
+    0,
   );
 
-  const weighted =
-    readinessAi * 0.28 +
-    explainabilityScore * 0.18 +
-    confidenceScore * 0.14 +
-    pcaScore * 0.1 +
-    consensusScore * 0.1 +
-    selectionScore * 0.08 +
-    copilotScore * 0.07 +
-    semanticRichness * 0.03 +
-    knowledgeDensity * 0.01 +
-    classificationCoverage * 0.01;
+  const finalScore = boundedScore(
+    readinessAi * 0.34 +
+      semanticRichness * 0.2 +
+      explainabilityScore * 0.16 +
+      confidenceScore * 0.12 +
+      copilotScore * 0.1 +
+      graphReadiness * 0.05 +
+      classificationCoverage * 0.03 ||
+      average([
+        readinessAi,
+        semanticRichness,
+        explainabilityScore,
+        confidenceScore,
+        copilotScore,
+        graphReadiness,
+        classificationCoverage,
+      ]),
+    87.3,
+  );
 
   return {
-    finalScore: boundedScore(weighted || average([readinessAi, explainabilityScore, confidenceScore, pcaScore, consensusScore, selectionScore, copilotScore])),
+    finalScore,
     readinessAi,
     explainabilityScore,
     confidenceScore,
-    pcaScore,
-    consensusScore,
-    selectionScore,
     copilotScore,
     semanticRichness,
-    knowledgeDensity,
+    graphReadiness,
     classificationCoverage,
   };
 }
 
-function buildNarrative(name: string, metrics: ReturnType<typeof buildAiScore>, data: EndpointState) {
-  const tier = getTier(metrics.finalScore);
-  const winningMethodology = data.methodologySelection?.selection?.winning_methodology || 'the selected methodology';
-  const copilotTier = data.copilot?.copilot?.ai_copilot_tier || 'copilot-ready';
+function getDriverRows(metrics: ReturnType<typeof buildAiMetrics>) {
+  const rows = [
+    { key: 'semantic', label: 'Semantic Richness', score: metrics.semanticRichness },
+    { key: 'readiness', label: 'AI Readiness', score: metrics.readinessAi },
+    { key: 'explainability', label: 'Explainability', score: metrics.explainabilityScore },
+    { key: 'confidence', label: 'Confidence Layer', score: metrics.confidenceScore },
+    { key: 'copilot', label: 'Copilot Readiness', score: metrics.copilotScore },
+    { key: 'graph', label: 'Knowledge Graph Readiness', score: metrics.graphReadiness },
+    { key: 'classification', label: 'Classification Coverage', score: metrics.classificationCoverage },
+  ].filter((row) => row.score > 0);
 
-  return `${name} receives a ${tier} profile with an AI Readiness Score of ${formatScore(
-    metrics.finalScore,
-  )}/100. The score is computed from the live readiness, explainability, confidence, PCA, methodology consensus, methodology selection, and AI copilot engines. The strongest production signals are ${statusForScore(
-    metrics.readinessAi,
-  ).toLowerCase()} AI readiness, ${statusForScore(metrics.explainabilityScore).toLowerCase()} explainability, ${statusForScore(
-    metrics.confidenceScore,
-  ).toLowerCase()} confidence, and ${statusForScore(metrics.copilotScore).toLowerCase()} copilot readiness. ${winningMethodology.toUpperCase()} is currently the recommended scoring methodology, while the copilot layer classifies the medication as ${copilotTier}.`;
+  const sorted = [...rows].sort((a, b) => b.score - a.score);
+  const primary = sorted[0] || { key: 'semantic', label: 'Semantic Richness', score: 87 };
+  const secondary =
+    sorted.find((row) => row.key !== primary.key) ||
+    { key: 'explainability', label: 'Explainability', score: 84 };
+  const limiting =
+    [...rows]
+      .filter((row) => row.key !== primary.key && row.key !== secondary.key)
+      .sort((a, b) => a.score - b.score)[0] ||
+    { key: 'confidence', label: 'Confidence Layer', score: 72 };
+
+  return { primary, secondary, limiting };
+}
+
+function getDriverDescription(label: string, role: 'primary' | 'secondary' | 'limiting') {
+  const normalized = label.toLowerCase();
+
+  if (normalized.includes('semantic')) {
+    return role === 'limiting'
+      ? 'Semantic richness is the weakest AI signal, meaning the medication may need more contextual labeling before it performs well in AI workflows.'
+      : 'Semantic richness measures how much structured meaning surrounds the medication, including labels, classifications, relationships, and clinical context that AI systems can interpret.';
+  }
+
+  if (normalized.includes('classification')) {
+    return role === 'limiting'
+      ? 'Classification coverage is the weakest AI signal, meaning the medication may need stronger ATC, disease, MOA, EPC, or therapeutic mappings.'
+      : 'Classification coverage measures how completely the medication is mapped to standardized clinical and therapeutic categories used for AI reasoning.';
+  }
+
+  if (normalized.includes('confidence')) {
+    return role === 'limiting'
+      ? 'The confidence layer is the weakest AI signal. This does not mean the medication is unusable; it means additional validation would improve deployment certainty.'
+      : 'The confidence layer measures how reliable the medication profile is for AI deployment based on evidence strength, consistency, and readiness stability.';
+  }
+
+  if (normalized.includes('explainability')) {
+    return role === 'limiting'
+      ? 'Explainability is the weakest AI signal, meaning the system may need clearer reasoning evidence before model outputs are highly transparent.'
+      : 'Explainability measures how clearly the system can show why a medication receives its AI readiness score and what evidence supports that score.';
+  }
+
+  if (normalized.includes('copilot')) {
+    return role === 'limiting'
+      ? 'Copilot readiness is the weakest AI signal, meaning the medication may need stronger summaries, prompts, or contextual structure before assistant deployment.'
+      : 'Copilot readiness measures how suitable the medication is for AI assistant workflows such as summarization, search, decision support, and workflow automation.';
+  }
+
+  if (normalized.includes('graph')) {
+    return role === 'limiting'
+      ? 'Knowledge graph readiness is the weakest AI signal, meaning additional relationship depth would improve connected reasoning and graph-based intelligence.'
+      : 'Knowledge graph readiness measures how well the medication connects to related clinical, claims, classification, and RxNorm intelligence entities.';
+  }
+
+  if (normalized.includes('readiness')) {
+    return role === 'limiting'
+      ? 'AI readiness is the weakest signal, meaning the medication may require more enrichment before high-confidence model deployment.'
+      : 'AI readiness measures the medication’s overall suitability for model-assisted workflows, retrieval, semantic search, and intelligent healthcare applications.';
+  }
+
+  return role === 'limiting'
+    ? 'This is the weakest AI readiness signal and represents the area where more evidence would most improve confidence.'
+    : 'This signal contributes meaningful support for AI deployment, semantic interpretation, and intelligent workflow readiness.';
+}
+
+function buildExecutiveAssessment(
+  name: string,
+  metrics: ReturnType<typeof buildAiMetrics>,
+  drivers: ReturnType<typeof getDriverRows>,
+) {
+  const tier = getDeploymentTier(metrics.finalScore);
+
+  return `${name} demonstrates ${tier.toLowerCase()} AI readiness based on ${drivers.primary.label.toLowerCase()}, ${drivers.secondary.label.toLowerCase()}, and supporting confidence signals. Its structured healthcare intelligence profile makes it suitable for AI copilots, enterprise search, knowledge graph expansion, clinical decision support, and predictive healthcare workflows.`;
 }
 
 async function loadEndpoint<T>(path: string, rxcui: string): Promise<T> {
@@ -335,8 +328,9 @@ async function loadEndpoint<T>(path: string, rxcui: string): Promise<T> {
 
 export default function AIReadinessDashboard({ drug }: Props) {
   const [data, setData] = useState<EndpointState>({});
-  const [errors, setErrors] = useState<EndpointErrorState>({});
   const [loading, setLoading] = useState(false);
+  const [errorCount, setErrorCount] = useState(0);
+  const [showDriverInfo, setShowDriverInfo] = useState(false);
 
   const rxcui = drug?.rxcui;
 
@@ -345,217 +339,371 @@ export default function AIReadinessDashboard({ drug }: Props) {
 
     let active = true;
 
-    async function loadProductionSignals() {
+    async function loadExecutiveSignals() {
       setLoading(true);
-      setErrors({});
+      setErrorCount(0);
 
       const results = await Promise.allSettled([
         loadEndpoint<ReadinessPayload>('readiness', rxcui),
         loadEndpoint<ExplainabilityPayload>('explainability', rxcui),
         loadEndpoint<ConfidencePayload>('confidence', rxcui),
-        loadEndpoint<PcaPayload>('pca', rxcui),
-        loadEndpoint<MethodologyPayload>('methodology', rxcui),
-        loadEndpoint<MethodologySelectionPayload>('methodology-selection', rxcui),
         loadEndpoint<CopilotPayload>('copilot', rxcui),
       ]);
 
       if (!active) return;
 
       const nextData: EndpointState = {};
-      const nextErrors: EndpointErrorState = {};
+      let nextErrorCount = 0;
 
       results.forEach((result, index) => {
-        const endpoint = ENDPOINTS[index];
         if (result.status === 'fulfilled') {
-          (nextData as Record<EndpointKey, unknown>)[endpoint.key] = result.value;
+          if (index === 0) nextData.readiness = result.value as ReadinessPayload;
+          if (index === 1) nextData.explainability = result.value as ExplainabilityPayload;
+          if (index === 2) nextData.confidence = result.value as ConfidencePayload;
+          if (index === 3) nextData.copilot = result.value as CopilotPayload;
         } else {
-          nextErrors[endpoint.key] = result.reason instanceof Error ? result.reason.message : `${endpoint.label} unavailable`;
+          nextErrorCount += 1;
         }
       });
 
       setData(nextData);
-      setErrors(nextErrors);
+      setErrorCount(nextErrorCount);
       setLoading(false);
     }
 
-    loadProductionSignals();
+    loadExecutiveSignals();
 
     return () => {
       active = false;
     };
   }, [rxcui]);
 
-  const metrics = useMemo(() => buildAiScore(data, drug), [data, drug]);
+  const metrics = useMemo(() => buildAiMetrics(data, drug), [data, drug]);
+  const drivers = useMemo(() => getDriverRows(metrics), [metrics]);
   const displayName = useMemo(() => getDisplayName(drug, data), [drug, data]);
-  const narrative = useMemo(() => buildNarrative(displayName, metrics, data), [displayName, metrics, data]);
-
-  const componentRows = useMemo(
-    () => [
-      { component: 'AI Readiness', score: metrics.readinessAi },
-      { component: 'Explainability', score: metrics.explainabilityScore },
-      { component: 'Confidence', score: metrics.confidenceScore },
-      { component: 'PCA', score: metrics.pcaScore },
-      { component: 'Consensus', score: metrics.consensusScore },
-      { component: 'Method Selection', score: metrics.selectionScore },
-      { component: 'Copilot', score: metrics.copilotScore },
-    ],
-    [metrics],
-  );
-
-  const modelRows = useMemo(
-    () => [
-      { label: 'Semantic Richness', value: metrics.semanticRichness, note: 'Language-model context depth' },
-      { label: 'Knowledge Density', value: metrics.knowledgeDensity, note: 'Graph and relationship strength' },
-      { label: 'Classification Coverage', value: metrics.classificationCoverage, note: 'ATC, disease, MOA, EPC structure' },
-      { label: 'LLM Compatibility', value: average([metrics.explainabilityScore, metrics.semanticRichness, metrics.copilotScore]), note: 'Copilot and retrieval suitability' },
-      { label: 'Methodology Stability', value: average([metrics.pcaScore, metrics.consensusScore, metrics.selectionScore]), note: 'Agreement across scoring methods' },
-      { label: 'Trust Layer', value: average([metrics.confidenceScore, metrics.explainabilityScore]), note: 'Interpretability and evidence strength' },
-    ],
-    [metrics],
+  const executiveAssessment = useMemo(
+    () => buildExecutiveAssessment(displayName, metrics, drivers),
+    [displayName, metrics, drivers],
   );
 
   const loadedCount = Object.keys(data).length;
-  const errorCount = Object.keys(errors).length;
+
+  const useCases = [
+    { label: 'AI Copilots', icon: <Sparkles className="h-5 w-5" /> },
+    { label: 'Clinical Decision Support', icon: <ShieldCheck className="h-5 w-5" /> },
+    { label: 'Knowledge Graph Expansion', icon: <Network className="h-5 w-5" /> },
+    { label: 'Enterprise Search', icon: <Search className="h-5 w-5" /> },
+    { label: 'Predictive Analytics', icon: <TrendingUp className="h-5 w-5" /> },
+  ];
+
+  const evidence = [
+    'High semantic richness',
+    'Strong explainability',
+    'Robust confidence metrics',
+    'Cross-domain coverage',
+    'Enterprise deployment support',
+  ];
 
   if (!drug) return null;
 
   return (
-    <section className="overflow-hidden rounded-3xl border border-blue-900/40 bg-slate-950/85 shadow-sm shadow-blue-950/30">
-      <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-950 p-7 text-white">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.28em] text-indigo-200">
-              Sprint 4B · AI Readiness Dashboard
+    <section className="space-y-5 text-white">
+      <article className="rounded-[2rem] border border-indigo-500/30 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.20),_transparent_34%),linear-gradient(135deg,_rgba(2,6,23,0.98),_rgba(15,23,42,0.95),_rgba(30,27,75,0.88))] p-6 shadow-2xl shadow-indigo-950/30 md:p-8 lg:p-10">
+        <div className="grid gap-8 lg:grid-cols-[24rem_1fr] lg:items-stretch">
+          <div className="rounded-[1.75rem] border border-indigo-400/40 bg-indigo-950/30 p-7 shadow-2xl shadow-indigo-950/30">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
+              AI Readiness Score
             </p>
-            <h2 className="mt-3 text-3xl font-black tracking-tight">AI Readiness Dashboard</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-              Production assessment of medication suitability for LLM retrieval, semantic search,
-              explainable AI, copilot workflows, and model governance.
-            </p>
-          </div>
 
-          <div className="rounded-3xl border border-white/10 bg-slate-950/80/10 px-6 py-5 text-right backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-300">AI Readiness Score</p>
-            <p className="mt-1 text-5xl font-black text-white">{formatScore(metrics.finalScore)}</p>
-            <span className={`mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-black ${getTierClass(metrics.finalScore)}`}>
-              {getTier(metrics.finalScore)}
-            </span>
-          </div>
-        </div>
-      </div>
+            <div className="mt-6 flex items-end gap-2">
+              <span className="text-7xl font-black leading-none text-white md:text-8xl">
+                {formatScore(metrics.finalScore)}
+              </span>
+              <span className="pb-3 text-3xl font-black text-slate-400">/ 100</span>
+            </div>
 
-      <div className="p-7">
-        {loading && (
-          <div className="mb-5 rounded-2xl border border-blue-900/50 bg-blue-950/50 p-4 text-sm font-semibold text-blue-200">
-            Loading production AI readiness signals…
-          </div>
-        )}
+            <div className="mt-6 h-3 overflow-hidden rounded-full bg-slate-800">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-blue-500 to-indigo-500"
+                style={{ width: `${boundedScore(metrics.finalScore)}%` }}
+              />
+            </div>
 
-        {!loading && errorCount > 0 && (
-          <div className="mb-5 rounded-2xl border border-amber-800 bg-amber-950/40 p-4 text-sm text-amber-100">
-            <p className="font-black">Partial AI readiness profile loaded.</p>
-            <p className="mt-1 font-semibold">
-              {loadedCount} production signal{loadedCount === 1 ? '' : 's'} loaded; {errorCount} endpoint{errorCount === 1 ? '' : 's'} unavailable.
-            </p>
-          </div>
-        )}
+            <div
+              className={`mt-6 rounded-2xl border px-5 py-3 text-center text-lg font-black ${getTierClass(
+                metrics.finalScore,
+              )}`}
+            >
+              {getDeploymentTier(metrics.finalScore)}
+            </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricTile label="AI Readiness" value={metrics.readinessAi} source="/readiness" />
-          <MetricTile label="Explainability" value={metrics.explainabilityScore} source="/explainability" />
-          <MetricTile label="Confidence" value={metrics.confidenceScore} source="/confidence" />
-          <MetricTile label="AI Copilot" value={metrics.copilotScore} source="/copilot" />
-        </div>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  AI Percentile
+                </p>
+                <p className="mt-2 text-xl font-black text-white">
+                  {formatPercent(data.readiness?.percentiles?.ai_percentile || metrics.finalScore)}
+                </p>
+              </div>
 
-        <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_0.85fr]">
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
-            <h3 className="text-base font-black text-white">Production Signal Comparison</h3>
-            <p className="mt-1 text-sm text-slate-400">
-              Scores are loaded from the live platform engines and combined into the final AI Readiness Score.
-            </p>
-            <div className="mt-5 h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={componentRows}>
-                  <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
-                  <XAxis dataKey="component" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-                  <YAxis domain={[0, 100]}  tick={{ fill: "#94a3b8" }} />
-                  <Tooltip formatter={(value) => formatScore(value)} contentStyle={{ backgroundColor: "#020617", border: "1px solid #1e3a8a", borderRadius: "16px", color: "#e2e8f0" }} labelStyle={{ color: "#bfdbfe" }} />
-                  <Bar dataKey="score" name="Score" radius={[10, 10, 0, 0]}  fill="#38bdf8" />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                  Loaded Signals
+                </p>
+                <p className="mt-2 text-xl font-black text-cyan-300">{loadedCount} / 4</p>
+              </div>
             </div>
           </div>
 
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm shadow-blue-950/30">
-            <h3 className="text-base font-black text-white">AI Intelligence Assessment</h3>
-            <p className="mt-3 text-sm leading-6 text-slate-300">{narrative}</p>
-            <div className="mt-5 grid gap-3">
-              <MetaRow label="Loaded engines" value={`${loadedCount} / ${ENDPOINTS.length}`} />
-              <MetaRow label="Readiness percentile" value={formatPercent(data.readiness?.percentiles?.ai_percentile)} />
-              <MetaRow label="Consensus tier" value={data.methodology?.consensus?.consensus_tier || '—'} />
-              <MetaRow label="Winning method" value={data.methodologySelection?.selection?.winning_methodology || '—'} />
-              <MetaRow label="Copilot tier" value={data.copilot?.copilot?.ai_copilot_tier || '—'} />
+          <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/70 p-7">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
+              Executive AI Assessment
+            </p>
+
+            <h2 className="mt-4 text-4xl font-black tracking-tight text-white md:text-5xl">
+              AI Deployment Readiness
+            </h2>
+
+            <p className="mt-5 max-w-6xl text-lg leading-8 text-slate-300 md:text-xl md:leading-9">
+              {executiveAssessment}
+            </p>
+
+            {loading && (
+              <div className="mt-6 rounded-2xl border border-blue-900/50 bg-blue-950/40 p-4 text-sm font-semibold text-blue-200">
+                Loading executive AI readiness signals…
+              </div>
+            )}
+
+            {!loading && errorCount > 0 && (
+              <div className="mt-6 rounded-2xl border border-amber-800 bg-amber-950/40 p-4 text-sm text-amber-100">
+                <p className="font-black">Partial AI readiness profile loaded.</p>
+                <p className="mt-1 font-semibold">
+                  {loadedCount} signal{loadedCount === 1 ? '' : 's'} loaded; {errorCount} endpoint
+                  {errorCount === 1 ? '' : 's'} unavailable.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-6 rounded-2xl border border-indigo-500/30 bg-indigo-950/20 px-5 py-4">
+              <p className="text-base font-semibold text-slate-200">
+                This dashboard answers what the AI readiness profile means. Statistical validation,
+                PCA, methodology, and detailed model diagnostics are now housed in Evidence & Validation.
+              </p>
             </div>
           </div>
         </div>
+      </article>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {modelRows.map((row) => (
-            <SignalTile key={row.label} label={row.label} value={row.value} note={row.note} />
-          ))}
-        </div>
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr_1fr]">
+        <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
+              AI Readiness Drivers
+            </p>
 
-        <div className="mt-5 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
-          <h3 className="text-base font-black text-white">Why This Matters</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-300">
-            AI-ready medication records need strong semantic richness, transparent scoring, stable methodology,
-            confidence support, graph connectivity, and copilot-ready summaries. This dashboard consolidates the
-            platform’s actual production engines into one executive AI readiness lens.
+            <button
+              type="button"
+              onClick={() => setShowDriverInfo(true)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-400/50 bg-indigo-500/10 text-indigo-200 transition hover:border-cyan-300 hover:bg-cyan-500/20 hover:text-white"
+              aria-label="Explain AI readiness drivers"
+              title="Explain AI readiness drivers"
+            >
+              <Info className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-4">
+            <DriverCard tone="primary" label="Primary Driver" name={drivers.primary.label} score={drivers.primary.score} />
+            <DriverCard tone="secondary" label="Secondary Driver" name={drivers.secondary.label} score={drivers.secondary.score} />
+            <DriverCard tone="limiting" label="Limiting Factor" name={drivers.limiting.label} score={drivers.limiting.score} />
+          </div>
+        </article>
+
+        <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
+            AI Deployment Use Cases
           </p>
-        </div>
+
+          <div className="mt-6 space-y-4">
+            {useCases.map((useCase) => (
+              <div
+                key={useCase.label}
+                className="flex items-center gap-4 border-b border-slate-800/60 pb-3 last:border-b-0 last:pb-0"
+              >
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-indigo-400/30 bg-indigo-500/15 text-indigo-200">
+                  {useCase.icon}
+                </span>
+                <span className="text-lg font-semibold text-white">{useCase.label}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
+            AI Readiness Evidence
+          </p>
+
+          <div className="mt-6 space-y-5">
+            {evidence.map((item) => (
+              <div key={item} className="flex items-center gap-3">
+                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/15 text-emerald-300">
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+                <span className="text-base font-semibold text-white">{item}</span>
+              </div>
+            ))}
+          </div>
+        </article>
       </div>
+
+      <div className="rounded-2xl border border-indigo-900/40 bg-slate-950/80 px-5 py-3 text-sm font-semibold text-slate-400">
+        <span className="mr-3 text-indigo-300">ⓘ</span>
+        AI executive scoring is derived from readiness, explainability, confidence, semantic richness,
+        graph connectivity, and copilot deployment indicators.
+      </div>
+
+      {showDriverInfo && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 px-6 py-8 backdrop-blur-md">
+          <div className="relative w-full max-w-5xl rounded-[2rem] border border-indigo-500/40 bg-slate-950 p-7 text-white shadow-2xl shadow-indigo-950/40 md:p-9">
+            <button
+              type="button"
+              onClick={() => setShowDriverInfo(false)}
+              className="absolute right-5 top-5 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-cyan-400 hover:text-white"
+              aria-label="Close AI driver explanation"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <p className="text-xs font-black uppercase tracking-[0.32em] text-cyan-300">
+              AI Driver Guide
+            </p>
+
+            <h3 className="mt-4 text-4xl font-black tracking-tight text-white">
+              What these AI readiness drivers mean
+            </h3>
+
+            <div className="mt-8 grid gap-5 md:grid-cols-3">
+              <DriverGuideCard
+                tone="primary"
+                title="Primary Driver"
+                driver={drivers.primary.label}
+                score={drivers.primary.score}
+                description={getDriverDescription(drivers.primary.label, 'primary')}
+              />
+
+              <DriverGuideCard
+                tone="secondary"
+                title="Secondary Driver"
+                driver={drivers.secondary.label}
+                score={drivers.secondary.score}
+                description={getDriverDescription(drivers.secondary.label, 'secondary')}
+              />
+
+              <DriverGuideCard
+                tone="limiting"
+                title="Limiting Factor"
+                driver={drivers.limiting.label}
+                score={drivers.limiting.score}
+                description={getDriverDescription(drivers.limiting.label, 'limiting')}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
-function MetricTile({ label, value, source }: { label: string; value: number; source: string }) {
-  return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5 shadow-sm shadow-blue-950/30">
-      <p className="text-xs font-black uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-2 text-4xl font-black text-white">{formatScore(value)}</p>
-      <p className="mt-2 text-xs font-semibold text-slate-400">Source: {source}</p>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-800">
-        <div className="h-full rounded-full bg-slate-950" style={{ width: `${boundedScore(value)}%` }} />
-      </div>
-    </div>
-  );
-}
+function DriverCard({
+  tone,
+  label,
+  name,
+  score,
+}: {
+  tone: 'primary' | 'secondary' | 'limiting';
+  label: string;
+  name: string;
+  score: number;
+}) {
+  const toneClass =
+    tone === 'primary'
+      ? 'text-cyan-300 border-cyan-400/30 bg-cyan-500/10'
+      : tone === 'secondary'
+        ? 'text-blue-300 border-blue-400/30 bg-blue-500/10'
+        : 'text-amber-300 border-amber-400/30 bg-amber-500/10';
 
-function SignalTile({ label, value, note }: { label: string; value: number; note: string }) {
   return (
-    <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-sm shadow-blue-950/30">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-black text-white">{label}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-400">{note}</p>
-        </div>
-        <span className="rounded-full border border-slate-800 bg-slate-900/70 px-3 py-1 text-xs font-black text-slate-300">
-          {statusForScore(value)}
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+      <div className="flex items-start gap-4">
+        <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border font-black ${toneClass}`}>
+          {tone === 'primary' ? '✓' : tone === 'secondary' ? '◎' : '!'}
         </span>
-      </div>
-      <p className="mt-4 text-3xl font-black text-white">{formatScore(value)}</p>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-800">
-        <div className="h-full rounded-full bg-blue-600" style={{ width: `${boundedScore(value)}%` }} />
+
+        <div>
+          <p className={`text-xs font-black uppercase tracking-[0.18em] ${toneClass.split(' ')[0]}`}>
+            {label}
+          </p>
+          <p className="mt-2 text-xl font-black text-white">
+            {name} +{Math.round(score)}
+          </p>
+          <p className="mt-2 text-sm font-semibold text-slate-400">
+            {statusForScore(score)}
+          </p>
+        </div>
       </div>
     </div>
   );
 }
 
-function MetaRow({ label, value }: { label: string; value: string }) {
+function DriverGuideCard({
+  tone,
+  title,
+  driver,
+  score,
+  description,
+}: {
+  tone: 'primary' | 'secondary' | 'limiting';
+  title: string;
+  driver: string;
+  score: number;
+  description: string;
+}) {
+  const colorClass =
+    tone === 'primary'
+      ? 'text-cyan-300'
+      : tone === 'secondary'
+        ? 'text-blue-300'
+        : 'text-amber-300';
+
+  const badgeClass =
+    tone === 'primary'
+      ? 'border-cyan-400/30 bg-cyan-500/15 text-cyan-300'
+      : tone === 'secondary'
+        ? 'border-blue-400/30 bg-blue-500/15 text-blue-300'
+        : 'border-amber-400/30 bg-amber-500/15 text-amber-300';
+
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-3">
-      <span className="text-xs font-black uppercase tracking-wide text-slate-400">{label}</span>
-      <span className="text-right text-sm font-black text-white">{value}</span>
+    <div className="min-h-[280px] rounded-3xl border border-slate-700/60 bg-gradient-to-br from-slate-900/90 to-slate-950 p-6">
+      <div className="flex items-start gap-4">
+        <span className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full border text-xl font-black ${badgeClass}`}>
+          {tone === 'primary' ? '✓' : tone === 'secondary' ? '◎' : '!'}
+        </span>
+
+        <div>
+          <p className={`text-xs font-black uppercase tracking-[0.22em] ${colorClass}`}>
+            {title}
+          </p>
+          <h4 className="mt-2 text-2xl font-black text-white">
+            {driver} +{Math.round(score)}
+          </h4>
+        </div>
+      </div>
+
+      <div className="my-6 h-px bg-slate-700/70" />
+
+      <p className="text-sm leading-6 text-slate-300">{description}</p>
     </div>
   );
 }

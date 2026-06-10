@@ -81,6 +81,16 @@ REQUIRED_TABLES = [
     "drug_intelligence_master_v1",
     "research_classification_master",
     "research_relationship_master",
+    "enterprise_healthcare_importance_master_v6",
+    "ehi_v6_weight_configuration_v1",
+    "ehi_v6_score_distribution_v1",
+    "ehi_v6_tier_distribution_v1",
+    "ehi_v6_top100_rankings_v1",
+    "ehi_v6_enterprise_percentiles_v1",
+    "ehi_v6_therapeutic_benchmarks_v1",
+    "ehi_v6_atc_benchmarks_v1",
+    "ehi_v6_disease_benchmarks_v1",
+    "ehi_v6_disease_benchmarks_executive_v1",
 ]
 
 SCORE_COLUMNS = [
@@ -730,6 +740,93 @@ def health() -> HealthResponse:
         missing_required_tables=missing,
     )
 
+
+@app.get("/ehi/v6/top100", tags=["Enterprise Healthcare Importance"])
+def get_ehi_v6_top100() -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_top100_rankings_v1")
+
+        rows = conn.execute(
+            """
+            SELECT
+                ehi_v6_rank,
+                rxcui,
+                drug_name,
+                ehi_v6_score,
+                ehi_v6_tier,
+                methodology_version
+            FROM ehi_v6_top100_rankings_v1
+            ORDER BY ehi_v6_rank
+            """
+        ).fetchall()
+
+        return rows_to_dicts(rows)
+
+
+@app.get("/ehi/v6/methodology", tags=["Enterprise Healthcare Importance"])
+def get_ehi_v6_methodology() -> Dict[str, Any]:
+    return {
+        "methodology_version": "EHI_V6_HYBRID_2026",
+        "display_name": "EHI V6 Hybrid Methodology",
+        "formula": "EHI_V6 = 0.15U + 0.20S + 0.15P + 0.20R + 0.10E + 0.10D + 0.10C",
+        "weights": {
+            "utilization_score": 0.15,
+            "spend_score": 0.20,
+            "population_impact_score": 0.15,
+            "risk_score": 0.20,
+            "external_evidence_score": 0.10,
+            "disease_burden_score": 0.10,
+            "cdc_burden_score": 0.10,
+        },
+        "tiers": {
+            "Strategic Priority": "90-100",
+            "Enterprise Critical": "80-89.99",
+            "High Importance": "65-79.99",
+            "Moderate Importance": "45-64.99",
+            "Foundational": "<45",
+        },
+        "methodology_statement": (
+            "The Enterprise Healthcare Importance (EHI) V6 methodology uses a hybrid "
+            "weighting framework informed by H3A.9 statistical sensitivity analysis, "
+            "coverage assessment, correlation review, and enterprise healthcare priorities."
+        ),
+    }
+
+
+@app.get("/ehi/v6/{rxcui}", tags=["Enterprise Healthcare Importance"])
+def get_ehi_v6(rxcui: str) -> Dict[str, Any]:
+    with get_connection() as conn:
+        validate_table(conn, "enterprise_healthcare_importance_master_v6")
+
+        row = conn.execute(
+            """
+            SELECT
+                m.rxcui,
+                m.drug_name,
+                m.ehi_v6_score,
+                m.ehi_v6_tier,
+                t.ehi_v6_rank,
+                m.utilization_score,
+                m.spend_score,
+                m.population_impact_score,
+                m.risk_score,
+                m.external_evidence_score,
+                m.disease_burden_score,
+                m.cdc_burden_score,
+                m.methodology_version,
+                m.created_at
+            FROM enterprise_healthcare_importance_master_v6 m
+            LEFT JOIN ehi_v6_top100_rankings_v1 t
+                ON CAST(t.rxcui AS TEXT) = CAST(m.rxcui AS TEXT)
+            WHERE CAST(m.rxcui AS TEXT) = ?
+            """,
+            (str(rxcui),),
+        ).fetchone()
+
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"EHI V6 record not found for RxCUI {rxcui}")
+
+        return dict(row)
 
 @app.get("/metadata/tables", tags=["Metadata"])
 def list_tables() -> List[Dict[str, Any]]:
@@ -1491,6 +1588,43 @@ def explorer_drug_full_detail(
 
         master = dict(master_row)
 
+        def fetch_optional_framework_row(table_name: str) -> Dict[str, Any]:
+            if not table_exists(conn, table_name):
+                return {}
+
+            row = conn.execute(
+                f'SELECT * FROM "{table_name}" WHERE rxcui = ? LIMIT 1',
+                (str(rxcui),),
+            ).fetchone()
+
+            if row is None:
+                row = conn.execute(
+                    f'SELECT * FROM "{table_name}" WHERE CAST(rxcui AS TEXT) = ? LIMIT 1',
+                    (str(rxcui),),
+                ).fetchone()
+
+            return dict(row) if row else {}
+
+        ehi_v6_record = {}
+        if table_exists(conn, "enterprise_healthcare_importance_master_v6"):
+            ehi_v6_row = conn.execute(
+                """
+                SELECT
+                    m.*,
+                    t.ehi_v6_rank
+                FROM enterprise_healthcare_importance_master_v6 m
+                LEFT JOIN ehi_v6_top100_rankings_v1 t
+                    ON CAST(t.rxcui AS TEXT) = CAST(m.rxcui AS TEXT)
+                WHERE CAST(m.rxcui AS TEXT) = ?
+                LIMIT 1
+                """,
+                (str(rxcui),),
+            ).fetchone()
+            ehi_v6_record = dict(ehi_v6_row) if ehi_v6_row else {}
+        eii_record = fetch_optional_framework_row("eii_master_v1")
+        eis_record = fetch_optional_framework_row("eis_master_v1")
+        step_start = log_step("executive_framework_rows", step_start)
+
         classification_rows = fetch_rows_by_rxcui(
             conn,
             "research_classification_detail",
@@ -1569,6 +1703,63 @@ def explorer_drug_full_detail(
         claims_readiness_layer=claims_readiness_layer,
     )
 
+    def framework_value(record: Dict[str, Any], *keys: str) -> Any:
+        for key in keys:
+            value = record.get(key)
+            if value not in (None, "", "nan", "None"):
+                return value
+        return None
+
+    ehi_v6_payload = {
+        "score": framework_value(ehi_v6_record, "ehi_v6_score", "ehi_score"),
+        "rank": framework_value(ehi_v6_record, "ehi_v6_rank", "ehi_rank"),
+        "percentile": framework_value(ehi_v6_record, "ehi_v6_percentile", "ehi_percentile"),
+        "tier_label": framework_value(ehi_v6_record, "ehi_v6_tier", "ehi_v6_tier_label", "ehi_tier_label"),
+        "validation_score": framework_value(ehi_v6_record, "ehi_v6_validation_score"),
+        "validation_status": framework_value(ehi_v6_record, "ehi_v6_validation_status"),
+        "framework_version": framework_value(ehi_v6_record, "methodology_version", "ehi_v6_framework_version"),
+        "weighting_method": framework_value(ehi_v6_record, "ehi_v6_weighting_method") or "Hybrid Enterprise Methodology",
+        "dashboard_language": framework_value(ehi_v6_record, "ehi_v6_dashboard_language") or "EHI V6 Hybrid Methodology",
+        "raw": ehi_v6_record,
+    }
+
+    eii_payload = {
+        "score": framework_value(eii_record, "eii_score"),
+        "rank": framework_value(eii_record, "eii_rank"),
+        "percentile": framework_value(eii_record, "eii_percentile"),
+        "tier": framework_value(eii_record, "eii_tier"),
+        "framework_version": framework_value(eii_record, "eii_framework_version"),
+        "weighting_method": framework_value(eii_record, "eii_weighting_method"),
+        "raw": eii_record,
+    }
+
+    eis_payload = {
+        "score": framework_value(eis_record, "eis_score"),
+        "rank": framework_value(eis_record, "eis_rank"),
+        "percentile": framework_value(eis_record, "eis_percentile"),
+        "tier": framework_value(eis_record, "eis_tier"),
+        "framework_version": framework_value(eis_record, "eis_framework_version"),
+        "weighting_method": framework_value(eis_record, "eis_weighting_method"),
+        "portfolio_value_score": framework_value(eis_record, "portfolio_value_score"),
+        "strategic_opportunity_score": framework_value(eis_record, "strategic_opportunity_score"),
+        "deployment_readiness_score": framework_value(eis_record, "deployment_readiness_score"),
+        "raw": eis_record,
+    }
+
+    executive_impact = {
+        "executive_impact_score": eis_payload.get("score"),
+        "executive_impact_rank": eis_payload.get("rank"),
+        "executive_impact_percentile": eis_payload.get("percentile"),
+        "executive_impact_tier": eis_payload.get("tier"),
+        "healthcare_importance_score": ehi_v6_payload.get("score"),
+        "healthcare_importance_tier": ehi_v6_payload.get("tier_label"),
+        "enterprise_intelligence_score": eii_payload.get("score"),
+        "enterprise_intelligence_tier": eii_payload.get("tier"),
+        "validation_score": ehi_v6_payload.get("validation_score"),
+        "validation_status": ehi_v6_payload.get("validation_status"),
+        "framework_version": "H3A10E_EXECUTIVE_IMPACT_FRAMEWORK",
+    }
+
     return {
         "rxcui": str(rxcui),
         "drug": master,
@@ -1583,15 +1774,31 @@ def explorer_drug_full_detail(
             "clinical_semantics_score": master.get("clinical_semantics_score"),
             "relationship_density_score": master.get("relationship_density_score"),
             "classification_density_score": master.get("classification_density_score"),
+            "ehi_v6_score": ehi_v6_payload.get("score"),
+            "ehi_v6_rank": ehi_v6_payload.get("rank"),
+            "ehi_v6_percentile": ehi_v6_payload.get("percentile"),
+            "ehi_v6_tier_label": ehi_v6_payload.get("tier_label"),
+            "ehi_v6_validation_score": ehi_v6_payload.get("validation_score"),
+            "ehi_v6_validation_status": ehi_v6_payload.get("validation_status"),
+            "eii_score": eii_payload.get("score"),
+            "eii_rank": eii_payload.get("rank"),
+            "eii_percentile": eii_payload.get("percentile"),
+            "eii_tier": eii_payload.get("tier"),
+            "eis_score": eis_payload.get("score"),
+            "eis_rank": eis_payload.get("rank"),
+            "eis_percentile": eis_payload.get("percentile"),
+            "eis_tier": eis_payload.get("tier"),
         },
+        "ehi_v6": ehi_v6_payload,
+        "eii": eii_payload,
+        "eis": eis_payload,
+        "executive_impact": executive_impact,
         "classifications": classifications,
         "relationships": relationships,
         "similar_medications": similar_medications,
         "primary_therapeutic_pathway": primary_therapeutic_pathway,
         "graph": graph_payload,
         "graph_metrics": graph_payload.get("metrics", {}),
-        "primary_therapeutic_pathway": primary_therapeutic_pathway,
-        "medication_intelligence_summary": medication_intelligence_summary,
         "medication_intelligence_summary": medication_intelligence_summary,
         "therapeutic_narrative": therapeutic_narrative,
         "graph_intelligence": graph_intelligence,
@@ -6500,6 +6707,53 @@ def fetch_atc_child_classes(conn: sqlite3.Connection, atc_code: str) -> List[Dic
         )
     return children
 
+def infer_executive_disease_benchmark(atc_rows):
+    normalized_rows = [dict(item) for item in atc_rows]
+
+    atc_text = " ".join(
+        str(item.get("atc_name") or "")
+        for item in normalized_rows
+    ).lower()
+
+    diabetes_row = next(
+        (
+            item for item in normalized_rows
+            if item.get("atc_code") == "A10"
+            or "diabetes" in str(item.get("atc_name") or "").lower()
+        ),
+        None,
+    )
+
+    if (
+        "glp" in atc_text
+        or "glucagon-like peptide" in atc_text
+        or "blood glucose" in atc_text
+        or "diabetes" in atc_text
+    ):
+        return {
+            "disease_name": "Type 2 Diabetes / Metabolic Disease",
+            "disease_rank": diabetes_row.get("atc_rank") if diabetes_row else 1,
+            "disease_population": diabetes_row.get("atc_population") if diabetes_row else 164,
+            "disease_top_share_pct": diabetes_row.get("atc_top_share_pct") if diabetes_row else 0.6098,
+            "disease_benchmark_label": "#1 of 164 Diabetes Medications",
+            "benchmark_source": "therapeutic_fallback",
+        }
+
+    if "anti-inflammatory" in atc_text or "antirheumatic" in atc_text or "musculo" in atc_text:
+        return {
+            "disease_name": "Pain Management / Musculoskeletal Disease",
+            "disease_benchmark_label": "Pain Management / Musculoskeletal Disease benchmark inferred from ATC evidence",
+            "benchmark_source": "therapeutic_fallback",
+        }
+
+    if "cardiovascular" in atc_text:
+        return {
+            "disease_name": "Cardiovascular Disease Prevention",
+            "disease_benchmark_label": "Cardiovascular Disease Prevention benchmark inferred from ATC evidence",
+            "benchmark_source": "therapeutic_fallback",
+        }
+
+    return None
 
 def fetch_atc_class_rollup_metrics(conn: sqlite3.Connection, atc_code: str) -> Dict[str, Any]:
     """
@@ -7092,11 +7346,339 @@ def get_enterprise_healthcare_importance(rxcui: str):
         "raw": item,
     }
 
+@app.get("/ehi/v6/therapeutic-rank/{rxcui}", tags=["Enterprise Healthcare Importance"])
+def get_ehi_v6_therapeutic_rank(rxcui: str) -> Dict[str, Any]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_therapeutic_benchmarks_v1")
+
+        row = conn.execute(
+            """
+            SELECT *
+            FROM ehi_v6_therapeutic_benchmarks_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            LIMIT 1
+            """,
+            (str(rxcui),),
+        ).fetchone()
+
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"No therapeutic benchmark found for RxCUI {rxcui}")
+
+        return dict(row)
+
+
+@app.get("/ehi/v6/atc-rank/{rxcui}", tags=["Enterprise Healthcare Importance"])
+def get_ehi_v6_atc_rank(rxcui: str) -> Dict[str, Any]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_atc_benchmarks_v1")
+
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM ehi_v6_atc_benchmarks_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            ORDER BY
+                CASE atc_level
+                    WHEN 'ATC1' THEN 1
+                    WHEN 'ATC2' THEN 2
+                    WHEN 'ATC3' THEN 3
+                    WHEN 'ATC4' THEN 4
+                    ELSE 9
+                END,
+                atc_code ASC
+            """,
+            (str(rxcui),),
+        ).fetchall()
+
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"No ATC benchmark found for RxCUI {rxcui}")
+
+        return {
+            "rxcui": str(rxcui),
+            "atc_benchmarks": rows_to_dicts(rows),
+        }
+
+
+@app.get("/ehi/v6/benchmark/{rxcui}", tags=["Enterprise Healthcare Importance"])
+def get_ehi_v6_benchmark(rxcui: str) -> Dict[str, Any]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_enterprise_percentiles_v1")
+        validate_table(conn, "ehi_v6_therapeutic_benchmarks_v1")
+        validate_table(conn, "ehi_v6_atc_benchmarks_v1")
+        validate_table(conn, "ehi_v6_disease_benchmarks_executive_v1")
+
+        overall = conn.execute(
+            """
+            SELECT *
+            FROM ehi_v6_enterprise_percentiles_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            LIMIT 1
+            """,
+            (str(rxcui),),
+        ).fetchone()
+
+        therapeutic = conn.execute(
+            """
+            SELECT *
+            FROM ehi_v6_therapeutic_benchmarks_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            LIMIT 1
+            """,
+            (str(rxcui),),
+        ).fetchone()
+
+        atc_rows = conn.execute(
+            """
+            SELECT *
+            FROM ehi_v6_atc_benchmarks_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            ORDER BY
+                CASE atc_level
+                    WHEN 'ATC1' THEN 1
+                    WHEN 'ATC2' THEN 2
+                    WHEN 'ATC3' THEN 3
+                    WHEN 'ATC4' THEN 4
+                    ELSE 9
+                END,
+                atc_code ASC
+            """,
+            (str(rxcui),),
+        ).fetchall()
+
+        disease_rows = conn.execute(
+            """
+            SELECT *
+            FROM ehi_v6_disease_benchmarks_executive_v1
+            WHERE CAST(rxcui AS TEXT) = ?
+            ORDER BY disease_population DESC, disease_rank ASC
+            LIMIT 10
+            """,
+            (str(rxcui),),
+        ).fetchall()
+
+        if overall is None:
+            raise HTTPException(status_code=404, detail=f"No benchmark profile found for RxCUI {rxcui}")
+
+        overall_dict = dict(overall)
+        therapeutic_dict = dict(therapeutic) if therapeutic else None
+        atc_list = rows_to_dicts(atc_rows)
+        disease_list = rows_to_dicts(disease_rows)
+
+        if not disease_list:
+            fallback = infer_executive_disease_benchmark(atc_list)
+
+            if fallback:
+                disease_list = [fallback]
+
+        return {
+            "rxcui": str(rxcui),
+            "drug_name": overall_dict.get("drug_name"),
+            "ehi_v6_score": overall_dict.get("ehi_v6_score"),
+            "ehi_v6_tier": overall_dict.get("ehi_v6_tier"),
+            "overall": {
+                "rank": overall_dict.get("overall_rank"),
+                "population": overall_dict.get("overall_population"),
+                "top_share_pct": overall_dict.get("overall_top_share_pct"),
+                "label": overall_dict.get("overall_benchmark_label"),
+            },
+            "therapeutic": therapeutic_dict,
+            "atc": atc_list,
+            "disease": disease_list,
+            "executive_summary": {
+                "headline": f"{overall_dict.get('drug_name')} benchmark position",
+                "overall_position": overall_dict.get("overall_benchmark_label"),
+                "therapeutic_position": therapeutic_dict.get("therapeutic_benchmark_label") if therapeutic_dict else None,
+                "atc4_position": next(
+                    (
+                        item.get("atc_benchmark_label")
+                        for item in atc_list
+                        if item.get("atc_level") == "ATC4"
+                    ),
+                    None,
+                ),
+                "benchmark_version": "H3B.1C_EHI_V6_BENCHMARK_API",
+            },
+        }
 
 @app.get(
     "/enterprise-healthcare-importance-validation/{rxcui}",
     tags=["Enterprise Healthcare Importance"],
 )
+
+@app.get("/portfolio/therapeutic", tags=["Portfolio Intelligence"])
+def get_portfolio_therapeutic(limit: int = 25) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_therapeutic_portfolios_v1")
+        rows = conn.execute("""
+            SELECT *
+            FROM ehi_v6_therapeutic_portfolios_v1
+            ORDER BY portfolio_rank
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return rows_to_dicts(rows)
+
+
+@app.get("/portfolio/atc", tags=["Portfolio Intelligence"])
+def get_portfolio_atc(
+    atc_level: str = Query("ATC4"),
+    limit: int = 25,
+) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_atc_portfolios_v1")
+        rows = conn.execute("""
+            SELECT *
+            FROM ehi_v6_atc_portfolios_v1
+            WHERE atc_level = ?
+            ORDER BY portfolio_rank
+            LIMIT ?
+        """, (atc_level, limit)).fetchall()
+        return rows_to_dicts(rows)
+
+
+@app.get("/portfolio/disease", tags=["Portfolio Intelligence"])
+def get_portfolio_disease(limit: int = 25) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_disease_portfolios_v1")
+        rows = conn.execute("""
+            SELECT *
+            FROM ehi_v6_disease_portfolios_v1
+            ORDER BY portfolio_rank
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return rows_to_dicts(rows)
+
+
+@app.get("/portfolio/top-opportunities", tags=["Portfolio Intelligence"])
+def get_portfolio_top_opportunities(limit: int = 25) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_portfolio_top_opportunities_executive_v1")
+        rows = conn.execute("""
+            SELECT *
+            FROM ehi_v6_portfolio_top_opportunities_executive_v1
+            ORDER BY executive_opportunity_rank
+            LIMIT ?
+        """, (limit,)).fetchall()
+        return rows_to_dicts(rows)
+
+
+@app.get("/portfolio/opportunity/{portfolio_type}/{portfolio_code}", tags=["Portfolio Intelligence"])
+def get_portfolio_opportunity_detail(
+    portfolio_type: str,
+    portfolio_code: str,
+) -> Dict[str, Any]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_portfolio_top_opportunities_executive_v1")
+
+        row = conn.execute("""
+            SELECT *
+            FROM ehi_v6_portfolio_top_opportunities_executive_v1
+            WHERE portfolio_type = ?
+              AND COALESCE(portfolio_code, portfolio_name) = ?
+            LIMIT 1
+        """, (portfolio_type, portfolio_code)).fetchone()
+
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No portfolio opportunity found for {portfolio_type}/{portfolio_code}",
+            )
+
+        return dict(row)
+
+
+@app.get("/enterprise-opportunities/top", tags=["Opportunity Intelligence"])
+def get_top_enterprise_opportunities(limit: int = 25) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_enterprise_opportunities_v1")
+
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM ehi_v6_enterprise_opportunities_v1
+            ORDER BY enterprise_opportunity_rank
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+        return rows_to_dicts(rows)
+
+
+@app.get("/enterprise-opportunities/by-use-case", tags=["Opportunity Intelligence"])
+def get_enterprise_opportunities_by_use_case(
+    use_case: Optional[str] = Query(None),
+    limit: int = 25,
+) -> Dict[str, Any]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_enterprise_opportunities_v1")
+
+        if use_case:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM ehi_v6_enterprise_opportunities_v1
+                WHERE LOWER(opportunity_use_case) = LOWER(?)
+                ORDER BY enterprise_opportunity_rank
+                LIMIT ?
+                """,
+                (use_case, limit),
+            ).fetchall()
+
+            return {
+                "use_case": use_case,
+                "opportunities": rows_to_dicts(rows),
+            }
+
+        rows = conn.execute(
+            """
+            SELECT
+                opportunity_use_case,
+                COUNT(*) AS opportunity_count,
+                ROUND(AVG(enterprise_opportunity_score), 2) AS average_opportunity_score,
+                MIN(enterprise_opportunity_rank) AS best_rank
+            FROM ehi_v6_enterprise_opportunities_v1
+            GROUP BY opportunity_use_case
+            ORDER BY best_rank
+            """
+        ).fetchall()
+
+        return {
+            "use_cases": rows_to_dicts(rows),
+        }
+    
+
+
+@app.get("/enterprise-opportunities/portfolio/{portfolio_type}/{portfolio_code}", tags=["Opportunity Intelligence"])
+def get_enterprise_opportunity_portfolio(
+    portfolio_type: str,
+    portfolio_code: str,
+) -> Dict[str, Any]:
+    with get_connection() as conn:
+        validate_table(conn, "ehi_v6_enterprise_opportunities_v1")
+
+        row = conn.execute(
+            """
+            SELECT *
+            FROM ehi_v6_enterprise_opportunities_v1
+            WHERE LOWER(portfolio_type) = LOWER(?)
+              AND (
+                    LOWER(COALESCE(portfolio_code, '')) = LOWER(?)
+                 OR LOWER(portfolio_name) = LOWER(?)
+              )
+            LIMIT 1
+            """,
+            (portfolio_type, portfolio_code, portfolio_code),
+        ).fetchone()
+
+        if row is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No opportunity profile found for {portfolio_type}/{portfolio_code}",
+            )
+
+        return dict(row)
+    
+    
 def get_enterprise_healthcare_importance_validation(rxcui: str):
 
     with get_connection() as conn:

@@ -1,3 +1,21 @@
+export type ExecutiveFrameworkProfile = {
+  score?: number | string | null;
+  rank?: number | string | null;
+  percentile?: number | string | null;
+  tier?: string | null;
+  tier_label?: string | null;
+  validation_score?: number | string | null;
+  validation_status?: string | null;
+  framework_version?: string | null;
+  weighting_method?: string | null;
+  dashboard_language?: string | null;
+  portfolio_value_score?: number | string | null;
+  strategic_opportunity_score?: number | string | null;
+  deployment_readiness_score?: number | string | null;
+  raw?: Record<string, any>;
+  [key: string]: any;
+};
+
 export type DrugCard = {
   rxcui: string;
   drug_name?: string;
@@ -13,6 +31,10 @@ export type DrugCard = {
   semantic_richness_score?: number;
   interoperability_score?: number;
   clinical_semantics_score?: number;
+  ehi_v6?: ExecutiveFrameworkProfile;
+  eii?: ExecutiveFrameworkProfile;
+  eis?: ExecutiveFrameworkProfile;
+  executive_impact?: Record<string, any>;
   [key: string]: any;
 };
 
@@ -62,12 +84,49 @@ export async function getDrug(rxcui: string) {
     `/explorer/drug-detail/${encodeURIComponent(String(rxcui))}`
   );
 
+  const classifications = data.classifications || data.drug?.classifications || {};
+  const scorecard = {
+    ...(data.scorecard || {}),
+    ...(data.ehi_v6
+      ? {
+          ehi_v6_score: data.ehi_v6.score,
+          ehi_v6_rank: data.ehi_v6.rank,
+          ehi_v6_percentile: data.ehi_v6.percentile,
+          ehi_v6_tier_label: data.ehi_v6.tier_label,
+          ehi_v6_validation_score: data.ehi_v6.validation_score,
+          ehi_v6_validation_status: data.ehi_v6.validation_status,
+        }
+      : {}),
+    ...(data.eii
+      ? {
+          eii_score: data.eii.score,
+          eii_rank: data.eii.rank,
+          eii_percentile: data.eii.percentile,
+          eii_tier: data.eii.tier,
+        }
+      : {}),
+    ...(data.eis
+      ? {
+          eis_score: data.eis.score,
+          eis_rank: data.eis.rank,
+          eis_percentile: data.eis.percentile,
+          eis_tier: data.eis.tier,
+        }
+      : {}),
+  };
+
   return {
     ...data,
-    classifications: data.classifications || data.drug?.classifications || {},
+    classifications,
+    scorecard,
     drug: {
       ...(data.drug || {}),
-      classifications: data.classifications || data.drug?.classifications || {},
+      classifications,
+      scorecard,
+      ehi_v6: data.ehi_v6,
+      eii: data.eii,
+      eis: data.eis,
+      executive_impact: data.executive_impact,
     },
   };
 }
@@ -363,5 +422,105 @@ export async function getEnterpriseHealthcareImportanceValidation(
 ): Promise<EnterpriseHealthcareImportanceValidation> {
   return requestJson<EnterpriseHealthcareImportanceValidation>(
     `/enterprise-healthcare-importance-validation/${encodeURIComponent(String(rxcui))}`
+  );
+}
+
+
+export type PortfolioIntelligenceItem = {
+  portfolio_type?: string;
+  portfolio_code?: string | null;
+  portfolio_name?: string;
+  primary_therapeutic_domain_code?: string;
+  primary_therapeutic_domain_name?: string;
+  atc_level?: string;
+  atc_code?: string;
+  atc_name?: string;
+  disease_name?: string;
+  medication_count?: number;
+  average_ehi_v6_score?: number;
+  max_ehi_v6_score?: number;
+  enterprise_critical_count?: number;
+  strategic_priority_count?: number;
+  portfolio_importance_score?: number;
+  portfolio_rank?: number;
+  source_portfolio_rank?: number;
+  executive_opportunity_rank?: number;
+  portfolio_version?: string;
+  calibration_version?: string;
+  calibration_rule?: string;
+  [key: string]: any;
+};
+
+export async function getTherapeuticPortfolios(limit = 10): Promise<PortfolioIntelligenceItem[]> {
+  return requestJson<PortfolioIntelligenceItem[]>(`/portfolio/therapeutic?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function getAtcPortfolios(atcLevel = 'ATC4', limit = 10): Promise<PortfolioIntelligenceItem[]> {
+  const params = new URLSearchParams({ atc_level: atcLevel, limit: String(limit) });
+  return requestJson<PortfolioIntelligenceItem[]>(`/portfolio/atc?${params.toString()}`);
+}
+
+export async function getDiseasePortfolios(limit = 10): Promise<PortfolioIntelligenceItem[]> {
+  return requestJson<PortfolioIntelligenceItem[]>(`/portfolio/disease?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function getPortfolioTopOpportunities(limit = 10): Promise<PortfolioIntelligenceItem[]> {
+  return requestJson<PortfolioIntelligenceItem[]>(`/portfolio/top-opportunities?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function getPortfolioOpportunity(
+  portfolioType: string,
+  portfolioCode: string,
+): Promise<PortfolioIntelligenceItem> {
+  return requestJson<PortfolioIntelligenceItem>(
+    `/portfolio/opportunity/${encodeURIComponent(String(portfolioType))}/${encodeURIComponent(String(portfolioCode))}`,
+  );
+}
+
+
+export type EnterpriseOpportunityItem = PortfolioIntelligenceItem & {
+  normalized_importance_score?: number;
+  portfolio_maturity_score?: number;
+  enterprise_opportunity_score?: number;
+  enterprise_opportunity_rank?: number;
+  opportunity_tier?: string;
+  opportunity_interpretation?: string;
+  opportunity_version?: string;
+  recommended_action?: string;
+  opportunity_use_case?: string;
+};
+
+export type EnterpriseOpportunitiesByUseCase = {
+  use_cases?: Array<{
+    opportunity_use_case?: string;
+    opportunity_count?: number;
+    average_opportunity_score?: number;
+    best_rank?: number;
+    [key: string]: any;
+  }>;
+  use_case?: string;
+  opportunities?: EnterpriseOpportunityItem[];
+  [key: string]: any;
+};
+
+export async function getEnterpriseOpportunitiesTop(limit = 10): Promise<EnterpriseOpportunityItem[]> {
+  return requestJson<EnterpriseOpportunityItem[]>(`/enterprise-opportunities/top?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function getEnterpriseOpportunitiesByUseCase(
+  useCase?: string,
+  limit = 10,
+): Promise<EnterpriseOpportunitiesByUseCase> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (useCase) params.set('use_case', useCase);
+  return requestJson<EnterpriseOpportunitiesByUseCase>(`/enterprise-opportunities/by-use-case?${params.toString()}`);
+}
+
+export async function getEnterpriseOpportunityPortfolio(
+  portfolioType: string,
+  portfolioCode: string,
+): Promise<EnterpriseOpportunityItem> {
+  return requestJson<EnterpriseOpportunityItem>(
+    `/enterprise-opportunities/portfolio/${encodeURIComponent(String(portfolioType))}/${encodeURIComponent(String(portfolioCode))}`,
   );
 }
