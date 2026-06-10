@@ -1,0 +1,7 @@
+input,weight
+ehi_v6_score_num,0.25
+eii_score,0.25
+validation_score_num,0.15
+portfolio_value_score,0.15
+strategic_opportunity_score,0.1
+deployment_readiness_score,0.1

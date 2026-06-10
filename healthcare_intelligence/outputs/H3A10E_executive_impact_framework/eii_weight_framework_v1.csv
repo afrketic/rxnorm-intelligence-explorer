@@ -1,0 +1,7 @@
+input,weight
+ehi_v6_score_num,0.3
+ai_readiness_score_num,0.2
+claims_readiness_score_num,0.15
+clinical_semantics_score_num,0.15
+knowledge_graph_score_num,0.1
+explainability_score_num,0.1
