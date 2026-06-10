@@ -1,0 +1,14 @@
+Healthcare Importance Score
+
+Calculated using the EHI V6 statistically calibrated healthcare importance framework. EHI V6 keeps healthcare importance separate from platform readiness by using only Tier 1 healthcare importance inputs: utilization, spend, population impact, disease burden, and risk.
+
+Production V6 weights:
+- Utilization: 39.1%
+- Spend: 21.9%
+- Population Impact: 16.8%
+- Disease Burden: 13.8%
+- Risk: 8.4%
+
+Tier assignments are percentile-calibrated and validated using ML weight discovery, correlation review, PCA, sensitivity testing, benchmark analysis, and validation scoring across 30,132 medications.
+
+Healthcare Importance Validation Score: 92.5/100 — Validated.

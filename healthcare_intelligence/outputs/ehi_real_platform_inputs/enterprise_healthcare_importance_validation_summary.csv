@@ -1,0 +1,2 @@
+methodology_version,source_database,source_table,row_count,avg_ehi_score,max_ehi_score,min_ehi_score,tier_1_count,tier_2_count,tier_3_count,tier_4_count,top_primary_driver,calculation_date
+EHI_REAL_PLATFORM_INPUTS_V1,/Users/alexfrketic/Desktop/AlexKnowsAI/Python Code/RxNorm Intelligence Platform/database/rxnorm_research.db,drug_intelligence_master_v1,30132,50.0,92.93,19.37,1509,6030,10552,12041,Risk Intelligence,2026-06-04 23:36:15

@@ -1,0 +1,4 @@
+candidate,path,rows,columns,has_required,target_columns
+v2_calibrated,/mnt/data/enterprise_healthcare_importance_master_v2_calibrated.csv,30132,43,True,"['ehi_score_v1', 'ehi_score_v2_calibrated']"
+master,/mnt/data/enterprise_healthcare_importance_master.csv,30132,49,True,['ehi_score']
+master_2,/mnt/data/enterprise_healthcare_importance_master 2.csv,30132,49,True,['ehi_score']

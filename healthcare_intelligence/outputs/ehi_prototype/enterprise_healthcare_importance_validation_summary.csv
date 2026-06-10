@@ -1,0 +1,2 @@
+methodology_version,source_database,source_table,row_count,avg_ehi_score,max_ehi_score,min_ehi_score,tier_1_count,tier_2_count,tier_3_count,tier_4_count,calculation_date
+EHI_PROTOTYPE_V1,/Users/alexfrketic/Desktop/AlexKnowsAI/Python Code/RxNorm Intelligence Platform/database/rxnorm_research.db,ai_readiness_dashboard_v1,30132,50.0,92.15,6.71,1509,6027,10549,12047,2026-06-04 23:22:52

@@ -1,0 +1,7 @@
+framework_version,component,score,weight,status,weighted_contribution,validation_status,interpretation
+EHI_V6_VALIDATION_FRAMEWORK_V1,Coverage,100.0,0.25,,25.0,Validated,Input coverage supports production scoring across the evaluated medication universe.
+EHI_V6_VALIDATION_FRAMEWORK_V1,Correlation Quality,65.71052581150195,0.2,,13.14210516230039,Validated,Correlation structure was reviewed for redundancy and unique signal contribution.
+EHI_V6_VALIDATION_FRAMEWORK_V1,Sensitivity Stability,99.70298486868042,0.2,,19.940596973736085,Validated,Leave-one-variable-out testing indicates score and rank stability under feature removal.
+EHI_V6_VALIDATION_FRAMEWORK_V1,Tier Stability,96.3221823974512,0.15,,14.448327359617679,Validated,Tier assignments remain stable enough for production interpretation.
+EHI_V6_VALIDATION_FRAMEWORK_V1,Model Fit,99.9817239248645,0.2,,19.9963447849729,Validated,"ML models recover the transparent score logic with high fidelity, supporting weight discovery."
+EHI_V6_VALIDATION_FRAMEWORK_V1,Healthcare Importance Validation Score,92.52737428062706,1.0,Validated,92.52737428062706,Validated,Overall validation score summarizes production readiness of the EHI V6 framework.

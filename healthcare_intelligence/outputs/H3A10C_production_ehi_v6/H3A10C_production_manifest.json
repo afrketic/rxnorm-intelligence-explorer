@@ -1,0 +1,29 @@
+{
+  "sprint": "H3A.10C",
+  "name": "Production EHI V6 Framework",
+  "source": "H3A.10B ML Weight Discovery Outputs",
+  "record_count": 30132,
+  "validation_score": 92.53,
+  "validation_status": "Validated",
+  "production_weights": {
+    "utilization_score": 0.390672,
+    "spend_score": 0.218951,
+    "population_impact_score": 0.167786,
+    "disease_burden_score": 0.138309,
+    "risk_score": 0.084282
+  },
+  "created_files": [
+    "EHI_V6_Production_Methodology_Whitepaper.md",
+    "ehi_v6_dashboard_methodology_language.txt",
+    "ehi_v6_model_performance_summary_v1.csv",
+    "ehi_v6_pearson_correlation_matrix_v1.csv",
+    "ehi_v6_production_master.csv",
+    "ehi_v6_production_top100.csv",
+    "ehi_v6_sensitivity_testing_v1.csv",
+    "ehi_v6_spearman_correlation_matrix_v1.csv",
+    "ehi_v6_tier_calibration_v1.csv",
+    "ehi_v6_validation_framework_v1.csv",
+    "ehi_v6_weight_framework_v1.csv"
+  ],
+  "created_timestamp": "2026-06-09T23:37:28"
+}

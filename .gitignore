@@ -3,3 +3,11 @@ __pycache__/
 .DS_Store
 .vscode/
 .env
+node_modules
+# Local project data
+Webpages Updates/
+data_pipeline/
+database/
+backend/rxnorm_intelligence.db
+
+archive/
