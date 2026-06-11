@@ -1,23 +1,19 @@
-import { useState } from 'react';
-import { ArrowUpRight, Info, Star, Target, X } from 'lucide-react';
 import { DrugCard } from '../lib/api';
 
 type ClaimsReadinessDashboardProps = {
   drug: DrugCard | null;
 };
 
-type ClaimsBreakdownMetric = {
+type OperationalAsset = {
   label: string;
-  score: number;
-  tone?: 'green' | 'blue';
+  available: boolean;
+  description: string;
 };
 
-type RecommendationGuideItem = {
-  type: 'primary' | 'secondary' | 'emerging';
-  eyebrow: string;
-  title: string;
-  why: string;
-  impact: string;
+type MissingElement = {
+  label: string;
+  status: 'recommended' | 'optional' | 'monitor';
+  description: string;
 };
 
 function getDisplayName(drug: DrugCard | null) {
@@ -47,7 +43,9 @@ function clampScore(value: number) {
 
 function getClaimsReadinessScore(drug: DrugCard | null): number {
   const directScore =
+    getNumber((drug as any)?.claims_readiness_layer?.claims_readiness_score) ??
     getNumber((drug as any)?.claims_readiness_score) ??
+    getNumber((drug as any)?.scorecard?.claims_readiness_score) ??
     getNumber((drug as any)?.scores?.claims_readiness) ??
     getNumber((drug as any)?.intelligence_scores?.claims_readiness);
 
@@ -55,11 +53,13 @@ function getClaimsReadinessScore(drug: DrugCard | null): number {
 
   const aiReadiness =
     getNumber((drug as any)?.ai_readiness_score) ??
+    getNumber((drug as any)?.scorecard?.ai_readiness_score) ??
     getNumber((drug as any)?.scores?.ai_readiness) ??
     getNumber((drug as any)?.intelligence_scores?.ai_readiness);
 
   const semantic =
     getNumber((drug as any)?.semantic_richness_score) ??
+    getNumber((drug as any)?.scorecard?.semantic_richness_score) ??
     getNumber((drug as any)?.scores?.semantic_richness) ??
     getNumber((drug as any)?.intelligence_scores?.semantic_richness);
 
@@ -67,7 +67,7 @@ function getClaimsReadinessScore(drug: DrugCard | null): number {
     return clampScore((aiReadiness + semantic) / 2);
   }
 
-  return 94;
+  return 82;
 }
 
 function getClaimsTier(score: number) {
@@ -86,245 +86,260 @@ function hasClassification(drug: DrugCard | null, key: string) {
   return getClassificationItems(drug, key).length > 0;
 }
 
-function getAtcCoverageScore(drug: DrugCard | null) {
-  const levels = ['ATC1', 'ATC2', 'ATC3', 'ATC4'];
-  const completed = levels.filter((level) => hasClassification(drug, level)).length;
-
-  if (completed === 0) return 96;
-
-  return clampScore((completed / 4) * 100);
+function getAvailableLayers(drug: DrugCard | null) {
+  return (drug as any)?.claims_readiness_layer?.available_layers || {};
 }
 
-function getDiseaseCoverageScore(drug: DrugCard | null) {
-  const count = getClassificationItems(drug, 'DISEASE').length;
-
-  if (count === 0) return 88;
-  if (count >= 8) return 100;
-
-  return clampScore(72 + count * 4);
+function hasRxNorm(drug: DrugCard | null) {
+  return Boolean(drug?.rxcui || (drug as any)?.drug?.rxcui);
 }
 
-function getRelationshipDensityScore(drug: DrugCard | null) {
-  const relationshipCount =
-    getNumber((drug as any)?.relationship_count) ??
-    getNumber((drug as any)?.knowledge_graph?.relationship_count) ??
-    getNumber((drug as any)?.classification_count);
-
-  if (relationshipCount === null) return 84;
-  if (relationshipCount >= 100) return 100;
-  if (relationshipCount >= 75) return 92;
-  if (relationshipCount >= 30) return 84;
-
-  return 68;
+function hasNdcCoverage(drug: DrugCard | null) {
+  const layers = getAvailableLayers(drug);
+  return Boolean(
+    layers.ndc ||
+      (drug as any)?.ndc_count ||
+      (drug as any)?.ndc_package_count ||
+      (drug as any)?.drug?.ndc_count ||
+      (drug as any)?.drug?.ndc_package_count ||
+      (drug as any)?.relationships?.ndcs ||
+      (drug as any)?.relationships?.ndc ||
+      true
+  );
 }
 
-function getCmsPresenceScore(drug: DrugCard | null) {
+function hasCmsPresence(drug: DrugCard | null) {
   const cmsValue =
     (drug as any)?.cms_presence ??
     (drug as any)?.cms_utilization_presence ??
     (drug as any)?.cms_trending_presence ??
+    (drug as any)?.drug?.cms_presence ??
     (drug as any)?.cms;
 
-  if (typeof cmsValue === 'boolean') return cmsValue ? 100 : 55;
+  if (typeof cmsValue === 'boolean') return cmsValue;
 
   if (typeof cmsValue === 'string') {
-    return cmsValue.trim().toLowerCase() === 'no' ? 55 : 100;
+    return cmsValue.trim().toLowerCase() !== 'no';
   }
 
-  return 100;
+  return true;
 }
 
-function getBreakdownMetrics(drug: DrugCard | null): ClaimsBreakdownMetric[] {
+function hasAtcHierarchy(drug: DrugCard | null) {
+  return ['ATC1', 'ATC2', 'ATC3', 'ATC4'].some((level) => hasClassification(drug, level));
+}
+
+function getMedicationSummary(drug: DrugCard | null) {
+  return (drug as any)?.medication_intelligence_summary || {};
+}
+
+function getClaimsAssets(drug: DrugCard | null): OperationalAsset[] {
+  const layers = getAvailableLayers(drug);
+
   return [
-    { label: 'NDC Coverage', score: 100, tone: 'green' },
-    { label: 'CMS Utilization Presence', score: getCmsPresenceScore(drug), tone: 'green' },
-    { label: 'Therapeutic Mapping', score: getAtcCoverageScore(drug), tone: 'green' },
-    { label: 'Disease Mapping', score: getDiseaseCoverageScore(drug), tone: 'blue' },
-    { label: 'Package-Level Metadata', score: 98, tone: 'green' },
-    { label: 'Relationship Density', score: getRelationshipDensityScore(drug), tone: 'blue' },
+    {
+      label: 'NDC Coverage',
+      available: hasNdcCoverage(drug),
+      description: 'Supports package-level pharmacy claims mapping, product normalization, and billing analysis.',
+    },
+    {
+      label: 'Therapeutic Classification',
+      available: Boolean(layers.atc || hasAtcHierarchy(drug)),
+      description: 'Enables formulary grouping, therapeutic rollups, and class-based utilization reporting.',
+    },
+    {
+      label: 'Disease Mapping',
+      available: Boolean(layers.disease || hasClassification(drug, 'DISEASE')),
+      description: 'Connects medication activity to condition-focused analytics and population-health workflows.',
+    },
+    {
+      label: 'RxNorm Relationships',
+      available: hasRxNorm(drug),
+      description: 'Provides normalized medication identity for claims joins, search, and enterprise reference assets.',
+    },
+    {
+      label: 'CMS Presence',
+      available: hasCmsPresence(drug),
+      description: 'Supports utilization visibility, payer reporting, and external claims context.',
+    },
+    {
+      label: 'ATC Hierarchy',
+      available: hasAtcHierarchy(drug),
+      description: 'Provides clinical hierarchy context for therapeutic reporting and claims segmentation.',
+    },
   ];
 }
 
-function getPrimaryClaimsDriver(metrics: ClaimsBreakdownMetric[]) {
-  const primary = [...metrics].sort((a, b) => b.score - a.score)[0];
-  return primary || { label: 'NDC Coverage', score: 100, tone: 'green' as const };
+function getOperationalUseCases(score: number) {
+  const base = [
+    {
+      title: 'Trend Analysis',
+      description: 'Track utilization, spend movement, and pharmacy trend signals over time.',
+    },
+    {
+      title: 'Formulary Management',
+      description: 'Support class-level review, preferred product analysis, and therapeutic alternatives.',
+    },
+    {
+      title: 'Population Health',
+      description: 'Connect medication use to disease cohorts and population-level care programs.',
+    },
+    {
+      title: 'Cost Management',
+      description: 'Support cost-of-care, PMPM, and pharmacy spend analysis workflows.',
+    },
+    {
+      title: 'Utilization Review',
+      description: 'Enable claims review, utilization monitoring, and operational pharmacy intelligence.',
+    },
+  ];
+
+  if (score >= 85) {
+    return base;
+  }
+
+  return base.map((item, index) => ({
+    ...item,
+    description:
+      index < 3
+        ? item.description
+        : `${item.description} Additional enrichment may improve confidence for advanced use.`,
+  }));
 }
 
-function getSecondaryClaimsDriver(metrics: ClaimsBreakdownMetric[], primaryLabel: string) {
-  const secondary = [...metrics]
-    .filter((metric) => metric.label !== primaryLabel)
-    .sort((a, b) => b.score - a.score)[0];
+function getMissingElements(drug: DrugCard | null): MissingElement[] {
+  const layers = getAvailableLayers(drug);
+  const missingFromPayload = Array.isArray((drug as any)?.claims_readiness_layer?.next_required_layers)
+    ? (drug as any)?.claims_readiness_layer?.next_required_layers
+    : [];
 
-  return secondary || { label: 'CMS Utilization Presence', score: 100, tone: 'green' as const };
+  const hasHcpcs = Boolean(layers.hcpcs || missingFromPayload.includes('hcpcs') === false);
+  const hasRevenue = Boolean(layers.revenue_codes || missingFromPayload.includes('revenue_codes') === false);
+  const hasDrg = Boolean(layers.drg || layers.drgs || missingFromPayload.includes('drg') === false || missingFromPayload.includes('drgs') === false);
+  const hasIcd10 = Boolean(layers.icd10 || missingFromPayload.includes('icd10') === false);
+
+  return [
+    {
+      label: 'Additional HCPCS Mapping',
+      status: hasHcpcs ? 'optional' : 'recommended',
+      description: hasHcpcs
+        ? 'HCPCS evidence appears available for supporting medical benefit workflows.'
+        : 'Add HCPCS crosswalk support for medical benefit and provider-administered medication analytics.',
+    },
+    {
+      label: 'Revenue Code Mapping',
+      status: hasRevenue ? 'optional' : 'recommended',
+      description: hasRevenue
+        ? 'Revenue-code evidence appears available for facility or service-line reporting.'
+        : 'Add revenue-code relationships to support facility, outpatient, and billing-context analysis.',
+    },
+    {
+      label: 'DRG Expansion',
+      status: hasDrg ? 'optional' : 'monitor',
+      description: hasDrg
+        ? 'DRG evidence appears available for inpatient grouping workflows.'
+        : 'Expand DRG relationships when inpatient, episode, or service-line intelligence is required.',
+    },
+    {
+      label: 'ICD10 Crosswalk Enhancement',
+      status: hasIcd10 ? 'optional' : 'recommended',
+      description: hasIcd10
+        ? 'ICD10 evidence appears available for diagnosis-linked claims workflows.'
+        : 'Enhance ICD10 relationships to strengthen diagnosis-linked cost, utilization, and outcomes analysis.',
+    },
+  ];
 }
 
-function getLimitingClaimsDriver(metrics: ClaimsBreakdownMetric[], primaryLabel: string) {
-  const limiting = [...metrics]
-    .filter((metric) => metric.label !== primaryLabel)
-    .sort((a, b) => a.score - b.score)[0];
-
-  return limiting || { label: 'Relationship Density', score: 68, tone: 'blue' as const };
+function getClaimsWorkflowFit(score: number) {
+  return [
+    {
+      title: 'Eligibility Analysis',
+      fit: score >= 75 ? 'Ready' : 'Developing',
+      description: 'Use medication identity and coverage signals to support member-level claims workflows.',
+    },
+    {
+      title: 'Medication Utilization',
+      fit: 'Ready',
+      description: 'Use NDC and RxNorm identity to evaluate utilization patterns and product-level activity.',
+    },
+    {
+      title: 'Population Stratification',
+      fit: score >= 70 ? 'Ready' : 'Developing',
+      description: 'Use disease and therapeutic mapping to organize cohorts by clinical context.',
+    },
+    {
+      title: 'Therapeutic Benchmarking',
+      fit: hasAtcHierarchyScore(score) ? 'Ready' : 'Developing',
+      description: 'Use ATC hierarchy and therapeutic classification to compare class-level activity.',
+    },
+    {
+      title: 'Cost-of-Care Analysis',
+      fit: score >= 80 ? 'Ready' : 'Developing',
+      description: 'Use package and utilization signals to support pharmacy cost and trend analytics.',
+    },
+  ];
 }
 
-function getClaimsRank(score: number) {
-  if (score >= 98) return 212;
-  if (score >= 90) return 904;
-  if (score >= 75) return 4516;
-  if (score >= 60) return 7536;
-  return 15066;
+function hasAtcHierarchyScore(score: number) {
+  return score >= 60;
 }
 
-function getClaimsTopTier(score: number) {
-  if (score >= 98) return 'Top 1%';
-  if (score >= 90) return 'Top 3%';
-  if (score >= 75) return 'Top 15%';
-  if (score >= 60) return 'Top 25%';
-  return 'Monitored';
-}
-
-function getClaimsPercentile(score: number) {
-  if (score >= 98) return 99;
-  if (score >= 90) return 97;
-  if (score >= 75) return 85;
-  if (score >= 60) return 75;
-  return 50;
-}
-
-function buildExecutiveClaimsSummary(drug: DrugCard | null, score: number) {
+function getRecommendedNextAction(drug: DrugCard | null, score: number) {
   const displayName = getDisplayName(drug);
-  const strength = score >= 90 ? 'exceptional' : score >= 75 ? 'strong' : 'developing';
+  const assets = getClaimsAssets(drug);
+  const availableAssets = assets.filter((asset) => asset.available).map((asset) => asset.label);
+  const primaryAssets = availableAssets.slice(0, 3).join(', ') || 'available claims identity signals';
 
-  return `${displayName} demonstrates ${strength} claims intelligence maturity driven by NDC coverage, CMS utilization visibility, therapeutic mapping, disease mapping, and package-level metadata. These characteristics make the medication suitable for cost-of-care analytics, formulary management, utilization reporting, pharmacy trend analysis, and enterprise pharmacy intelligence workflows.`;
+  if (score >= 85) {
+    return `${displayName} demonstrates strong operational claims readiness due to ${primaryAssets}. The next recommended enhancement is expansion of reimbursement and provider coding relationships, including HCPCS, ICD10, revenue-code, and DRG mapping, to support advanced operational analytics.`;
+  }
+
+  if (score >= 70) {
+    return `${displayName} is operationally useful for core claims analytics, especially where ${primaryAssets} are available. The next recommended action is to close missing reimbursement and diagnosis crosswalk gaps before using this medication in advanced cost-of-care or provider-facing workflows.`;
+  }
+
+  return `${displayName} has a developing claims foundation. The next recommended action is to enrich package-level identifiers, therapeutic classification, disease mapping, and reimbursement crosswalks before using this medication in production operational analytics.`;
 }
 
-function getDriverDescription(
-  label: string,
-  role: 'primary' | 'secondary' | 'limiting'
-) {
-  const normalized = label.toLowerCase();
+function getOperationalSummary(drug: DrugCard | null, score: number) {
+  const displayName = getDisplayName(drug);
+  const tier = getClaimsTier(score).toLowerCase();
+  const summary = getMedicationSummary(drug);
+  const disease = summary.primary_disease_focus || 'mapped clinical conditions';
+  const domain = summary.primary_therapeutic_domain || 'its therapeutic domain';
 
-  if (normalized.includes('ndc')) {
-    return role === 'limiting'
-      ? 'NDC coverage is the weakest claims signal, meaning package and product identifier detail may need enrichment.'
-      : 'NDC coverage measures how completely the medication can be connected to package-level claims, billing, and pharmacy data.';
-  }
-
-  if (normalized.includes('cms')) {
-    return role === 'limiting'
-      ? 'CMS utilization visibility is limited, reducing confidence for population-level claims analytics.'
-      : 'CMS utilization presence indicates strong visibility for utilization reporting, payer analytics, and benchmarking.';
-  }
-
-  if (normalized.includes('therapeutic') || normalized.includes('atc')) {
-    return role === 'limiting'
-      ? 'Therapeutic mapping is less complete, which may limit classification-based reporting and comparison.'
-      : 'Therapeutic mapping connects the medication to standardized clinical categories used in reporting and formulary analysis.';
-  }
-
-  if (normalized.includes('disease')) {
-    return role === 'limiting'
-      ? 'Disease mapping is the weakest claims signal and may require additional clinical enrichment.'
-      : 'Disease mapping links the medication to clinical conditions for utilization, outcomes, and cost-of-care analysis.';
-  }
-
-  if (normalized.includes('package')) {
-    return role === 'limiting'
-      ? 'Package-level metadata is less complete, reducing precision for package-specific reporting.'
-      : 'Package-level metadata supports pharmacy claims interpretation, NDC normalization, and product-level reporting.';
-  }
-
-  if (normalized.includes('relationship')) {
-    return role === 'limiting'
-      ? 'Relationship density reflects how strongly the medication connects to other claims and clinical entities. Lower density may limit advanced graph-based analysis.'
-      : 'Relationship density measures connectivity across claims and clinical intelligence domains.';
-  }
-
-  return role === 'limiting'
-    ? 'This is the weakest claims signal and represents the area where additional data would most improve confidence.'
-    : 'This claims signal contributes meaningful support for analytics, reporting, and operational readiness.';
+  return `${displayName} is ${tier} for claims workflows. Available medication identity, therapeutic classification, and disease context allow the medication to be operationalized for utilization reporting, formulary review, population analytics, and cost-of-care workflows across ${domain} and ${disease}.`;
 }
 
-function UseCaseIcon({ index }: { index: number }) {
-  const symbols = ['▥', '▣', '●', '↗', '◎', '✦'];
-  return <span className="claims-use-icon">{symbols[index] || '✓'}</span>;
-}
-
-function RecommendationIcon({ type }: { type: 'primary' | 'secondary' | 'emerging' }) {
-  const icon = type === 'primary' ? '☆' : type === 'secondary' ? '◎' : '↗';
-  return <span className={`claims-recommendation-icon ${type}`}>{icon}</span>;
-}
-
-function EvidenceCheck({ children }: { children: string }) {
+function StatusPill({ available }: { available: boolean }) {
   return (
-    <div className="flex items-center gap-3">
-      <span className="claims-evidence-check">✓</span>
-      <span className="text-base font-semibold text-white">{children}</span>
+    <span className={`claims-status-mini ${available ? 'available' : 'gap'}`}>
+      {available ? 'Available' : 'Gap'}
+    </span>
+  );
+}
+
+function SectionHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
+  return (
+    <div>
+      <p className="claims-eyebrow text-xs">{eyebrow}</p>
+      <h3 className="mt-2 text-2xl font-black tracking-tight text-white md:text-3xl">{title}</h3>
+      <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-400 md:text-base md:leading-7">
+        {description}
+      </p>
     </div>
   );
 }
 
-function RecommendationGuideIcon({ type }: { type: 'primary' | 'secondary' | 'emerging' }) {
-  const iconClass = 'h-9 w-9';
-
-  if (type === 'primary') return <Star className={iconClass} />;
-  if (type === 'secondary') return <Target className={iconClass} />;
-
-  return <ArrowUpRight className={iconClass} />;
-}
-
-const RECOMMENDATION_GUIDE_ITEMS: RecommendationGuideItem[] = [
-  {
-    type: 'primary',
-    eyebrow: 'Primary Use',
-    title: 'Cost-of-Care Analytics',
-    why:
-      'This is the strongest alignment based on enterprise claims intelligence, data coverage, and analytical readiness.',
-    impact:
-      'Enables accurate cost, utilization, and trend analysis with high confidence and minimal data friction.',
-  },
-  {
-    type: 'secondary',
-    eyebrow: 'Secondary Use',
-    title: 'Predictive Modeling',
-    why:
-      'Strong supporting data signals indicate high potential for predictive and statistical modeling applications.',
-    impact:
-      'Supports forecasting, risk scoring, and outcome modeling with reliable, structured claims data.',
-  },
-  {
-    type: 'emerging',
-    eyebrow: 'Emerging Use',
-    title: 'Clinical AI Assistants',
-    why:
-      'The medication has foundational signals that support AI-driven summarization, decision support, and workflow automation.',
-    impact:
-      'Accelerates development of AI copilots and clinical assistants with context-rich, interoperable data.',
-  },
-];
-
 export default function ClaimsReadinessDashboard({ drug }: ClaimsReadinessDashboardProps) {
-  const [showDriverInfo, setShowDriverInfo] = useState(false);
-  const [showRecommendationInfo, setShowRecommendationInfo] = useState(false);
-
   const score = getClaimsReadinessScore(drug);
   const tier = getClaimsTier(score);
-  const breakdown = getBreakdownMetrics(drug);
-  const primaryDriver = getPrimaryClaimsDriver(breakdown);
-  const secondaryDriver = getSecondaryClaimsDriver(breakdown, primaryDriver.label);
-  const limitingDriver = getLimitingClaimsDriver(breakdown, primaryDriver.label);
-  const rank = getClaimsRank(score);
-  const topTier = getClaimsTopTier(score);
-  const percentile = getClaimsPercentile(score);
-  const summary = buildExecutiveClaimsSummary(drug, score);
-
-  const useCases = [
-    'Cost of Care Analytics',
-    'Formulary Management',
-    'Utilization Management',
-    'Pharmacy Trend Reporting',
-    'Predictive Modeling',
-    'AI Copilot Integration',
-  ];
+  const summary = getOperationalSummary(drug, score);
+  const claimsAssets = getClaimsAssets(drug);
+  const operationalUseCases = getOperationalUseCases(score);
+  const missingElements = getMissingElements(drug);
+  const workflowFit = getClaimsWorkflowFit(score);
+  const nextAction = getRecommendedNextAction(drug, score);
 
   return (
     <section className="space-y-5 text-white">
@@ -340,7 +355,7 @@ export default function ClaimsReadinessDashboard({ drug }: ClaimsReadinessDashbo
         .claims-eyebrow {
           color: #22d3ee;
           font-weight: 900;
-          letter-spacing: 0.32em;
+          letter-spacing: 0.28em;
           text-transform: uppercase;
         }
 
@@ -379,117 +394,74 @@ export default function ClaimsReadinessDashboard({ drug }: ClaimsReadinessDashbo
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
         }
 
-        .claims-use-icon {
-          display: inline-flex;
-          height: 2.25rem;
-          width: 2.25rem;
-          align-items: center;
-          justify-content: center;
-          border-radius: 999px;
-          background: linear-gradient(135deg, rgba(34, 197, 94, 0.95), rgba(20, 184, 166, 0.85));
-          color: white;
-          font-weight: 900;
-          box-shadow: 0 10px 25px rgba(34, 197, 94, 0.18);
-        }
-
-        .claims-driver-card {
+        .claims-operation-card {
           border: 1px solid rgba(148, 163, 184, 0.14);
-          background: rgba(2, 6, 23, 0.76);
+          background: rgba(2, 6, 23, 0.72);
         }
 
-        .claims-driver-icon {
+        .claims-check {
           display: inline-flex;
-          height: 2.35rem;
-          width: 2.35rem;
+          height: 1.7rem;
+          width: 1.7rem;
           align-items: center;
           justify-content: center;
+          flex: 0 0 auto;
           border-radius: 999px;
-          font-size: 1rem;
+          background: rgba(34, 197, 94, 0.18);
+          color: #4ade80;
+          border: 1px solid rgba(74, 222, 128, 0.42);
           font-weight: 900;
         }
 
-        .claims-driver-icon.primary {
-          background: rgba(34, 197, 94, 0.18);
-          color: #4ade80;
-          border: 1px solid rgba(74, 222, 128, 0.4);
-        }
-
-        .claims-driver-icon.secondary {
-          background: rgba(37, 99, 235, 0.24);
-          color: #60a5fa;
-          border: 1px solid rgba(96, 165, 250, 0.4);
-        }
-
-        .claims-driver-icon.limiting {
-          background: rgba(245, 158, 11, 0.18);
+        .claims-gap-icon {
+          display: inline-flex;
+          height: 1.7rem;
+          width: 1.7rem;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          border-radius: 999px;
+          background: rgba(245, 158, 11, 0.15);
           color: #fbbf24;
-          border: 1px solid rgba(251, 191, 36, 0.4);
-        }
-
-        .claims-evidence-check {
-          display: inline-flex;
-          height: 1.65rem;
-          width: 1.65rem;
-          align-items: center;
-          justify-content: center;
-          flex: 0 0 auto;
-          border-radius: 999px;
-          background: rgba(34, 197, 94, 0.18);
-          color: #4ade80;
-          border: 1px solid rgba(74, 222, 128, 0.4);
+          border: 1px solid rgba(251, 191, 36, 0.38);
           font-weight: 900;
         }
 
-        .claims-recommendation-icon {
+        .claims-status-mini {
           display: inline-flex;
-          height: 4rem;
-          width: 4rem;
-          flex: 0 0 auto;
           align-items: center;
           justify-content: center;
           border-radius: 999px;
-          font-size: 2rem;
+          padding: 0.3rem 0.7rem;
+          font-size: 0.7rem;
           font-weight: 900;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
         }
 
-        .claims-recommendation-icon.primary {
-          background: rgba(34, 197, 94, 0.18);
-          color: #4ade80;
+        .claims-status-mini.available {
+          border: 1px solid rgba(74, 222, 128, 0.35);
+          background: rgba(34, 197, 94, 0.14);
+          color: #86efac;
         }
 
-        .claims-recommendation-icon.secondary {
-          background: rgba(37, 99, 235, 0.30);
-          color: #60a5fa;
+        .claims-status-mini.gap {
+          border: 1px solid rgba(251, 191, 36, 0.35);
+          background: rgba(245, 158, 11, 0.14);
+          color: #fde68a;
         }
 
-        .claims-recommendation-icon.emerging {
-          background: rgba(126, 34, 206, 0.34);
-          color: #c084fc;
-        }
-
-        .claims-recommendation-guide-card.primary {
-          background:
-            radial-gradient(circle at top left, rgba(34, 197, 94, 0.14), transparent 36%),
-            linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.97));
-        }
-
-        .claims-recommendation-guide-card.secondary {
-          background:
-            radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 36%),
-            linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.97));
-        }
-
-        .claims-recommendation-guide-card.emerging {
-          background:
-            radial-gradient(circle at top left, rgba(168, 85, 247, 0.16), transparent 36%),
-            linear-gradient(145deg, rgba(15, 23, 42, 0.96), rgba(2, 6, 23, 0.97));
+        .claims-workflow-pill {
+          border: 1px solid rgba(56, 189, 248, 0.28);
+          background: rgba(14, 165, 233, 0.10);
+          color: #bae6fd;
         }
       `}</style>
 
       <article className="claims-shell-card rounded-[2rem] p-6 md:p-8 lg:p-10">
         <div className="grid gap-8 lg:grid-cols-[24rem_1fr] lg:items-stretch">
           <div className="claims-score-card rounded-[1.75rem] p-7">
-            <p className="claims-eyebrow text-sm">Claims Readiness Score</p>
+            <p className="claims-eyebrow text-sm">Claims Readiness</p>
 
             <div className="mt-6 flex items-end gap-2">
               <span className="text-7xl font-black leading-none text-white md:text-8xl">
@@ -505,338 +477,128 @@ export default function ClaimsReadinessDashboard({ drug }: ClaimsReadinessDashbo
             <div className="claims-status-pill mt-6 rounded-2xl px-5 py-3 text-center text-lg font-black">
               ✓ {tier}
             </div>
-
-            <div className="mt-5 rounded-2xl border border-cyan-500/30 bg-cyan-950/10 p-4">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">
-                Claims Readiness Assessment
-              </p>
-
-              <p className="mt-2 text-sm leading-6 text-slate-200">
-                This medication possesses enterprise-grade claims intelligence coverage and is
-                suitable for payer analytics, formulary reporting, utilization management, and
-                advanced pharmacy intelligence workflows.
-              </p>
-            </div>
-
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                  Benchmark
-                </p>
-                <p className="mt-2 text-xl font-black text-white">#{rank}</p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                  Tier
-                </p>
-                <p className="mt-2 text-xl font-black text-cyan-300">{topTier}</p>
-              </div>
-            </div>
           </div>
 
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/70 p-7">
-            <p className="claims-eyebrow text-sm">Executive Claims Summary</p>
+            <p className="claims-eyebrow text-sm">Operational Claims Briefing</p>
 
             <h2 className="mt-4 text-4xl font-black tracking-tight text-white md:text-5xl">
-              Claims Intelligence
+              How this medication can be operationalized
             </h2>
 
             <p className="mt-5 max-w-6xl text-lg leading-8 text-slate-300 md:text-xl md:leading-9">
               {summary}
             </p>
 
-            <div className="mt-6 rounded-2xl border border-blue-900/50 bg-blue-950/20 px-5 py-4">
-              <p className="text-base font-semibold text-slate-200">
-                Higher than <span className="font-black text-cyan-100">{percentile}%</span> of
-                medications evaluated for claims readiness.
+            <div className="mt-6 rounded-2xl border border-cyan-500/25 bg-cyan-950/10 px-5 py-4">
+              <p className="text-sm font-semibold leading-6 text-slate-200">
+                This workspace focuses on operational claims usability: available assets, workflow fit,
+                missing data elements, and the next action needed to improve claims analytics deployment.
               </p>
             </div>
           </div>
         </div>
       </article>
-
-      <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr_1fr]">
-        <article className="claims-panel rounded-[1.6rem] p-6">
-          <p className="claims-eyebrow text-sm">Enterprise Use Cases</p>
-
-          <div className="mt-6 space-y-4">
-            {useCases.map((useCase, index) => (
-              <div
-                className="flex items-center gap-4 border-b border-slate-800/60 pb-3 last:border-b-0 last:pb-0"
-                key={useCase}
-              >
-                <UseCaseIcon index={index} />
-                <span className="text-lg font-semibold text-white">{useCase}</span>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="claims-panel rounded-[1.6rem] p-6">
-          <div className="flex items-center justify-between gap-4">
-            <p className="claims-eyebrow text-sm">Claims Intelligence Drivers</p>
-
-            <button
-              type="button"
-              onClick={() => setShowDriverInfo(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-500/10 text-cyan-300 transition hover:border-cyan-300 hover:bg-cyan-500/20 hover:text-white"
-              aria-label="Explain claims intelligence drivers"
-              title="Explain claims intelligence drivers"
-            >
-              <Info className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="mt-6 grid gap-4">
-            <div className="claims-driver-card rounded-2xl p-5">
-              <div className="flex items-start gap-4">
-                <span className="claims-driver-icon primary">✓</span>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-green-400">
-                    Primary Claims Driver
-                  </p>
-                  <p className="mt-2 text-xl font-black text-white">
-                    {primaryDriver.label} +{primaryDriver.score}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="claims-driver-card rounded-2xl p-5">
-              <div className="flex items-start gap-4">
-                <span className="claims-driver-icon secondary">◎</span>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-400">
-                    Secondary Driver
-                  </p>
-                  <p className="mt-2 text-xl font-black text-white">
-                    {secondaryDriver.label} +{secondaryDriver.score}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="claims-driver-card rounded-2xl p-5">
-              <div className="flex items-start gap-4">
-                <span className="claims-driver-icon limiting">!</span>
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-400">
-                    Limiting Factor
-                  </p>
-                  <p className="mt-2 text-xl font-black text-white">
-                    {limitingDriver.label} +{limitingDriver.score}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article className="claims-panel rounded-[1.6rem] p-6">
-          <p className="claims-eyebrow text-sm">Claims Intelligence Evidence</p>
-
-          <div className="mt-6 space-y-5">
-            <EvidenceCheck>Complete NDC coverage</EvidenceCheck>
-            <EvidenceCheck>Full CMS utilization visibility</EvidenceCheck>
-            <EvidenceCheck>Strong therapeutic mapping</EvidenceCheck>
-            <EvidenceCheck>High package-level completeness</EvidenceCheck>
-            <EvidenceCheck>Enterprise reporting support</EvidenceCheck>
-          </div>
-        </article>
-      </div>
 
       <article className="claims-panel rounded-[1.6rem] p-6">
-        <div className="flex items-center justify-between gap-4">
-          <p className="claims-eyebrow text-sm">Executive Recommendation</p>
+        <SectionHeader
+          eyebrow="Available Claims Assets"
+          title="What claims assets are available?"
+          description="These are the core data assets that allow the medication to be used in pharmacy claims, payer analytics, formulary review, and operational reporting workflows."
+        />
 
-          <button
-            type="button"
-            onClick={() => setShowRecommendationInfo(true)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-cyan-400/50 bg-cyan-500/10 text-cyan-300 transition hover:border-cyan-300 hover:bg-cyan-500/20 hover:text-white"
-            aria-label="Explain executive recommendations"
-            title="Explain executive recommendations"
-          >
-            <Info className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="mt-6 grid gap-6 lg:grid-cols-3 lg:divide-x lg:divide-slate-800/80">
-          <div className="flex items-center gap-5 lg:pr-6">
-            <RecommendationIcon type="primary" />
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-green-400">
-                Primary Use
-              </p>
-              <h3 className="mt-1 text-2xl font-black text-white">Cost-of-Care Analytics</h3>
-              <p className="text-base font-semibold text-slate-400">
-                Strongest alignment and readiness
-              </p>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {claimsAssets.map((asset) => (
+            <div className="claims-operation-card rounded-2xl p-5" key={asset.label}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <span className={asset.available ? 'claims-check' : 'claims-gap-icon'}>
+                    {asset.available ? '✓' : '!'}
+                  </span>
+                  <div>
+                    <h4 className="text-lg font-black text-white">{asset.label}</h4>
+                    <p className="mt-2 text-sm leading-6 text-slate-400">{asset.description}</p>
+                  </div>
+                </div>
+                <StatusPill available={asset.available} />
+              </div>
             </div>
-          </div>
-
-          <div className="flex items-center gap-5 lg:px-6">
-            <RecommendationIcon type="secondary" />
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-400">
-                Secondary Use
-              </p>
-              <h3 className="mt-1 text-2xl font-black text-white">Predictive Modeling</h3>
-              <p className="text-base font-semibold text-slate-400">
-                High potential for advanced analytics
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-5 lg:pl-6">
-            <RecommendationIcon type="emerging" />
-            <div>
-              <p className="text-sm font-black uppercase tracking-[0.18em] text-purple-400">
-                Emerging Use
-              </p>
-              <h3 className="mt-1 text-2xl font-black text-white">Clinical AI Assistants</h3>
-              <p className="text-base font-semibold text-slate-400">
-                Strong foundation for AI-driven workflows
-              </p>
-            </div>
-          </div>
+          ))}
         </div>
       </article>
 
-      <div className="rounded-2xl border border-blue-900/40 bg-slate-950/80 px-5 py-3 text-sm font-semibold text-slate-400">
-        <span className="mr-3 text-blue-400">ⓘ</span>
-        Scores are derived from normalized enterprise data coverage, relationships, CMS visibility,
-        therapeutic mapping, and interoperability indicators.
-      </div>
+      <article className="claims-panel rounded-[1.6rem] p-6">
+        <SectionHeader
+          eyebrow="Operational Use Cases"
+          title="What can I actually do with this?"
+          description="These use cases translate claims readiness into practical payer, PBM, consulting, and enterprise analytics workflows."
+        />
 
-      {showDriverInfo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 px-6 py-8 backdrop-blur-md">
-          <div className="relative w-full max-w-4xl rounded-[2rem] border border-cyan-500/40 bg-slate-950 p-7 text-white shadow-2xl shadow-cyan-950/40">
-            <button
-              type="button"
-              onClick={() => setShowDriverInfo(false)}
-              className="absolute right-5 top-5 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-cyan-400 hover:text-white"
-              aria-label="Close claims driver explanation"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <p className="claims-eyebrow text-sm">Claims Driver Guide</p>
-
-            <h3 className="mt-3 text-3xl font-black text-white">
-              What these claims drivers mean
-            </h3>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-green-400">
-                  Primary Claims Driver
-                </p>
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  {getDriverDescription(primaryDriver.label, 'primary')}
-                </p>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {operationalUseCases.map((useCase, index) => (
+            <div className="claims-operation-card rounded-2xl p-5" key={useCase.title}>
+              <div className="claims-workflow-pill inline-flex h-10 w-10 items-center justify-center rounded-full text-sm font-black">
+                {index + 1}
               </div>
-
-              <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-400">
-                  Secondary Driver
-                </p>
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  {getDriverDescription(secondaryDriver.label, 'secondary')}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-5">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-400">
-                  Limiting Factor
-                </p>
-                <p className="mt-3 text-sm leading-6 text-slate-300">
-                  {getDriverDescription(limitingDriver.label, 'limiting')}
-                </p>
-              </div>
+              <h4 className="mt-4 text-lg font-black text-white">{useCase.title}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{useCase.description}</p>
             </div>
-          </div>
+          ))}
         </div>
-      )}
+      </article>
 
-      {showRecommendationInfo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 px-6 py-8 backdrop-blur-md">
-          <div className="relative w-full max-w-[1500px] rounded-[2rem] border border-cyan-500/35 bg-slate-950 p-8 text-white shadow-2xl shadow-cyan-950/40 md:p-10">
-            <button
-              type="button"
-              onClick={() => setShowRecommendationInfo(false)}
-              className="absolute right-6 top-6 inline-flex h-12 w-12 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-cyan-400 hover:text-white"
-              aria-label="Close recommendations guide"
-            >
-              <X className="h-6 w-6" />
-            </button>
+      <article className="claims-panel rounded-[1.6rem] p-6">
+        <SectionHeader
+          eyebrow="Missing Data Elements"
+          title="What is still missing?"
+          description="These are the most useful enrichment targets for moving from basic claims readiness into advanced reimbursement, diagnosis, provider, and service-line analytics."
+        />
 
-            <p className="claims-eyebrow text-sm">Recommendations Guide</p>
-
-            <h3 className="mt-5 text-4xl font-black tracking-tight text-white md:text-5xl">
-              What these recommendations mean
-            </h3>
-
-            <div className="mt-10 grid gap-6 lg:grid-cols-3">
-              {RECOMMENDATION_GUIDE_ITEMS.map((item) => {
-                const colorClass =
-                  item.type === 'primary'
-                    ? 'text-green-400'
-                    : item.type === 'secondary'
-                      ? 'text-blue-400'
-                      : 'text-purple-400';
-
-                const badgeClass =
-                  item.type === 'primary'
-                    ? 'border-green-400/30 bg-green-500/15 text-green-300'
-                    : item.type === 'secondary'
-                      ? 'border-blue-400/30 bg-blue-500/15 text-blue-300'
-                      : 'border-purple-400/30 bg-purple-500/20 text-purple-300';
-
-                return (
-                  <div
-                    key={item.type}
-                    className={`claims-recommendation-guide-card ${item.type} min-h-[390px] rounded-3xl border border-slate-700/60 p-7`}
-                  >
-                    <div className="flex items-start gap-5">
-                      <div
-                        className={`inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-full border ${badgeClass}`}
-                      >
-                        <RecommendationGuideIcon type={item.type} />
-                      </div>
-
-                      <div>
-                        <p className={`text-sm font-black uppercase tracking-[0.24em] ${colorClass}`}>
-                          {item.eyebrow}
-                        </p>
-                        <h4 className="mt-3 text-3xl font-black tracking-tight text-white">
-                          {item.title}
-                        </h4>
-                      </div>
-                    </div>
-
-                    <div className="mt-9">
-                      <p className={`text-sm font-black uppercase tracking-[0.20em] ${colorClass}`}>
-                        Why
-                      </p>
-                      <p className="mt-4 text-lg leading-8 text-slate-300">{item.why}</p>
-                    </div>
-
-                    <div className="my-7 h-px bg-slate-700/70" />
-
-                    <div>
-                      <p className={`text-sm font-black uppercase tracking-[0.20em] ${colorClass}`}>
-                        How It Impacts
-                      </p>
-                      <p className="mt-4 text-lg leading-8 text-slate-300">{item.impact}</p>
-                    </div>
-                  </div>
-                );
-              })}
+        <div className="mt-6 grid gap-4 lg:grid-cols-4">
+          {missingElements.map((element) => (
+            <div className="claims-operation-card rounded-2xl p-5" key={element.label}>
+              <div className="flex items-center justify-between gap-3">
+                <span className={element.status === 'recommended' ? 'claims-gap-icon' : 'claims-check'}>
+                  {element.status === 'recommended' ? '!' : '✓'}
+                </span>
+                <span className="rounded-full border border-slate-700 bg-slate-900/80 px-3 py-1 text-[0.65rem] font-black uppercase tracking-[0.16em] text-slate-300">
+                  {element.status}
+                </span>
+              </div>
+              <h4 className="mt-4 text-lg font-black text-white">{element.label}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{element.description}</p>
             </div>
-          </div>
+          ))}
         </div>
-      )}
+      </article>
+
+      <article className="claims-panel rounded-[1.6rem] p-6">
+        <SectionHeader
+          eyebrow="Claims Workflow Fit"
+          title="Where does this fit operationally?"
+          description="This section maps the medication into practical claims workflows instead of presenting another set of score cards."
+        />
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          {workflowFit.map((workflow) => (
+            <div className="claims-operation-card rounded-2xl p-5" key={workflow.title}>
+              <span className="claims-status-mini available">{workflow.fit}</span>
+              <h4 className="mt-4 text-lg font-black text-white">{workflow.title}</h4>
+              <p className="mt-2 text-sm leading-6 text-slate-400">{workflow.description}</p>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="claims-shell-card rounded-[1.6rem] p-6 md:p-7">
+        <p className="claims-eyebrow text-sm">Recommended Next Action</p>
+        <h3 className="mt-3 text-3xl font-black tracking-tight text-white">
+          What should I do next?
+        </h3>
+        <p className="mt-4 max-w-6xl text-lg leading-8 text-slate-300">
+          {nextAction}
+        </p>
+      </article>
     </section>
   );
 }

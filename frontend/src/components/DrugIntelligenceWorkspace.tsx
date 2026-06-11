@@ -4,7 +4,7 @@ import ClaimsReadinessDashboard from './ClaimsReadinessDashboard';
 import AIReadinessDashboard from './AIReadinessDashboard';
 import ClinicalIntelligenceDashboard from './ClinicalIntelligenceDashboard';
 import EnterpriseIntelligenceDashboard from './EnterpriseIntelligenceDashboard';
-import EnterpriseHealthcareImportanceCard from './EnterpriseHealthcareImportanceCard';
+import ExecutiveIntelligenceBriefing from './ExecutiveIntelligenceBriefing';
 import EvidenceValidationDashboard from './EvidenceValidationDashboard';
 import KnowledgeGraphDashboard from './KnowledgeGraphDashboard';
 
@@ -47,7 +47,7 @@ export default function DrugIntelligenceWorkspace({
   return (
     <section className="space-y-6">
       {activeTab === 'overview' && (
-        <EnterpriseHealthcareImportanceCard drug={drug} />
+        <ExecutiveIntelligenceBriefing drug={drug} />
       )}
 
       {activeTab === 'claims' && (

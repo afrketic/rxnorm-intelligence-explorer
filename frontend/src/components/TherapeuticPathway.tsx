@@ -114,9 +114,9 @@ export default function TherapeuticPathway({ drug, onSelectAtc }: Props) {
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-blue-300">Therapeutic Pathway</p>
-          <h3 className="mt-2 text-2xl font-black">Visible ATC navigation</h3>
+          <h3 className="mt-2 text-2xl font-black">Therapeutic Pathway</h3>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-            Each ATC node is both a readable therapeutic pathway step and a click target for the Sprint 2 ATC Explorer.
+            This pathway shows where the medication resides within the global therapeutic classification hierarchy.
           </p>
         </div>
         <span className="rounded-full border border-blue-500/60 bg-blue-500/10 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-blue-100">

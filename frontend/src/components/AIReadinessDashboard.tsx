@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Bot,
   Brain,
   CheckCircle2,
-  Info,
+  GitBranch,
   Network,
+  Route,
   Search,
   ShieldCheck,
   Sparkles,
-  TrendingUp,
-  X,
 } from 'lucide-react';
 import { DrugCard } from '../lib/api';
 
@@ -42,8 +42,11 @@ type ExplainabilityPayload = {
   explainability?: {
     explainability_score?: number;
     explainability_tier?: string;
+    executive_narrative?: string;
+    recommended_action?: string;
   };
   scores?: Record<string, number>;
+  reasons?: Array<Record<string, any>>;
 };
 
 type ConfidencePayload = {
@@ -61,7 +64,14 @@ type CopilotPayload = {
     ai_copilot_score?: number;
     ai_copilot_percentile?: number;
     ai_copilot_tier?: string;
+    recommended_prompt?: string;
   };
+  summaries?: {
+    executive_summary?: string;
+    technical_summary?: string;
+    strategic_summary?: string;
+  };
+  questions?: Array<Record<string, any>>;
 };
 
 type EndpointState = {
@@ -93,10 +103,6 @@ function formatScore(value: unknown) {
   return boundedScore(value).toFixed(1);
 }
 
-function formatPercent(value: unknown) {
-  return `${boundedScore(value).toFixed(1)}%`;
-}
-
 function average(values: number[]) {
   const clean = values.filter((value) => Number.isFinite(value) && value > 0);
   if (!clean.length) return 0;
@@ -123,11 +129,11 @@ function getDisplayName(drug: Props['drug'], data: EndpointState) {
 }
 
 function getDeploymentTier(score: number) {
-  if (score >= 90) return 'Production Ready';
-  if (score >= 82) return 'Enterprise Candidate';
-  if (score >= 72) return 'AI Deployment Candidate';
-  if (score >= 60) return 'Monitor & Enrich';
-  return 'AI Enrichment Needed';
+  if (score >= 90) return 'AI Deployment Ready';
+  if (score >= 82) return 'Enterprise AI Candidate';
+  if (score >= 72) return 'AI Workflow Candidate';
+  if (score >= 60) return 'AI Context Enrichment Needed';
+  return 'AI Foundation Needed';
 }
 
 function getTierClass(score: number) {
@@ -138,12 +144,10 @@ function getTierClass(score: number) {
   return 'border-slate-500 bg-slate-900 text-slate-200';
 }
 
-function statusForScore(score: number) {
-  if (score >= 90) return 'Excellent';
-  if (score >= 82) return 'Strong';
-  if (score >= 72) return 'Moderate';
-  if (score >= 60) return 'Developing';
-  return 'Limited';
+function availabilityLabel(value: number) {
+  if (value >= 82) return 'Available';
+  if (value >= 60) return 'Developing';
+  return 'Needs Enrichment';
 }
 
 function buildAiMetrics(data: EndpointState, drug: Props['drug']) {
@@ -203,22 +207,30 @@ function buildAiMetrics(data: EndpointState, drug: Props['drug']) {
     0,
   );
 
+  const relationshipCoverage = boundedScore(
+    data.explainability?.scores?.relationship_coverage_score ||
+      data.explainability?.scores?.relationship_density_score ||
+      drug?.relationship_density_score ||
+      average([graphReadiness, semanticRichness]),
+    0,
+  );
+
   const finalScore = boundedScore(
-    readinessAi * 0.34 +
-      semanticRichness * 0.2 +
+    readinessAi * 0.4 +
+      semanticRichness * 0.22 +
       explainabilityScore * 0.16 +
-      confidenceScore * 0.12 +
-      copilotScore * 0.1 +
-      graphReadiness * 0.05 +
-      classificationCoverage * 0.03 ||
+      graphReadiness * 0.1 +
+      classificationCoverage * 0.07 +
+      relationshipCoverage * 0.05 ||
       average([
         readinessAi,
         semanticRichness,
         explainabilityScore,
-        confidenceScore,
-        copilotScore,
         graphReadiness,
         classificationCoverage,
+        relationshipCoverage,
+        confidenceScore,
+        copilotScore,
       ]),
     87.3,
   );
@@ -232,92 +244,26 @@ function buildAiMetrics(data: EndpointState, drug: Props['drug']) {
     semanticRichness,
     graphReadiness,
     classificationCoverage,
+    relationshipCoverage,
   };
 }
 
-function getDriverRows(metrics: ReturnType<typeof buildAiMetrics>) {
-  const rows = [
-    { key: 'semantic', label: 'Semantic Richness', score: metrics.semanticRichness },
-    { key: 'readiness', label: 'AI Readiness', score: metrics.readinessAi },
-    { key: 'explainability', label: 'Explainability', score: metrics.explainabilityScore },
-    { key: 'confidence', label: 'Confidence Layer', score: metrics.confidenceScore },
-    { key: 'copilot', label: 'Copilot Readiness', score: metrics.copilotScore },
-    { key: 'graph', label: 'Knowledge Graph Readiness', score: metrics.graphReadiness },
-    { key: 'classification', label: 'Classification Coverage', score: metrics.classificationCoverage },
-  ].filter((row) => row.score > 0);
-
-  const sorted = [...rows].sort((a, b) => b.score - a.score);
-  const primary = sorted[0] || { key: 'semantic', label: 'Semantic Richness', score: 87 };
-  const secondary =
-    sorted.find((row) => row.key !== primary.key) ||
-    { key: 'explainability', label: 'Explainability', score: 84 };
-  const limiting =
-    [...rows]
-      .filter((row) => row.key !== primary.key && row.key !== secondary.key)
-      .sort((a, b) => a.score - b.score)[0] ||
-    { key: 'confidence', label: 'Confidence Layer', score: 72 };
-
-  return { primary, secondary, limiting };
-}
-
-function getDriverDescription(label: string, role: 'primary' | 'secondary' | 'limiting') {
-  const normalized = label.toLowerCase();
-
-  if (normalized.includes('semantic')) {
-    return role === 'limiting'
-      ? 'Semantic richness is the weakest AI signal, meaning the medication may need more contextual labeling before it performs well in AI workflows.'
-      : 'Semantic richness measures how much structured meaning surrounds the medication, including labels, classifications, relationships, and clinical context that AI systems can interpret.';
-  }
-
-  if (normalized.includes('classification')) {
-    return role === 'limiting'
-      ? 'Classification coverage is the weakest AI signal, meaning the medication may need stronger ATC, disease, MOA, EPC, or therapeutic mappings.'
-      : 'Classification coverage measures how completely the medication is mapped to standardized clinical and therapeutic categories used for AI reasoning.';
-  }
-
-  if (normalized.includes('confidence')) {
-    return role === 'limiting'
-      ? 'The confidence layer is the weakest AI signal. This does not mean the medication is unusable; it means additional validation would improve deployment certainty.'
-      : 'The confidence layer measures how reliable the medication profile is for AI deployment based on evidence strength, consistency, and readiness stability.';
-  }
-
-  if (normalized.includes('explainability')) {
-    return role === 'limiting'
-      ? 'Explainability is the weakest AI signal, meaning the system may need clearer reasoning evidence before model outputs are highly transparent.'
-      : 'Explainability measures how clearly the system can show why a medication receives its AI readiness score and what evidence supports that score.';
-  }
-
-  if (normalized.includes('copilot')) {
-    return role === 'limiting'
-      ? 'Copilot readiness is the weakest AI signal, meaning the medication may need stronger summaries, prompts, or contextual structure before assistant deployment.'
-      : 'Copilot readiness measures how suitable the medication is for AI assistant workflows such as summarization, search, decision support, and workflow automation.';
-  }
-
-  if (normalized.includes('graph')) {
-    return role === 'limiting'
-      ? 'Knowledge graph readiness is the weakest AI signal, meaning additional relationship depth would improve connected reasoning and graph-based intelligence.'
-      : 'Knowledge graph readiness measures how well the medication connects to related clinical, claims, classification, and RxNorm intelligence entities.';
-  }
-
-  if (normalized.includes('readiness')) {
-    return role === 'limiting'
-      ? 'AI readiness is the weakest signal, meaning the medication may require more enrichment before high-confidence model deployment.'
-      : 'AI readiness measures the medication’s overall suitability for model-assisted workflows, retrieval, semantic search, and intelligent healthcare applications.';
-  }
-
-  return role === 'limiting'
-    ? 'This is the weakest AI readiness signal and represents the area where more evidence would most improve confidence.'
-    : 'This signal contributes meaningful support for AI deployment, semantic interpretation, and intelligent workflow readiness.';
-}
-
-function buildExecutiveAssessment(
-  name: string,
-  metrics: ReturnType<typeof buildAiMetrics>,
-  drivers: ReturnType<typeof getDriverRows>,
-) {
+function buildExecutiveAssessment(name: string, metrics: ReturnType<typeof buildAiMetrics>) {
   const tier = getDeploymentTier(metrics.finalScore);
 
-  return `${name} demonstrates ${tier.toLowerCase()} AI readiness based on ${drivers.primary.label.toLowerCase()}, ${drivers.secondary.label.toLowerCase()}, and supporting confidence signals. Its structured healthcare intelligence profile makes it suitable for AI copilots, enterprise search, knowledge graph expansion, clinical decision support, and predictive healthcare workflows.`;
+  return `${name} demonstrates ${tier.toLowerCase()} based on structured therapeutic classification, disease intelligence, mechanism evidence, explainability coverage, and knowledge graph context. These signals provide the semantic foundation needed for retrieval, reasoning, AI copilots, clinical question answering, and graph-based healthcare intelligence.`;
+}
+
+function buildDeploymentPath(name: string, metrics: ReturnType<typeof buildAiMetrics>) {
+  if (metrics.finalScore >= 90) {
+    return `${name} is ready for high-value AI deployment. Recommended pathways include retrieval-augmented generation, clinical copilots, semantic medication search, and graph-based intelligence workflows.`;
+  }
+
+  if (metrics.finalScore >= 72) {
+    return `${name} is a strong AI workflow candidate. Recommended next steps are targeted context enrichment, retrieval validation, and controlled deployment in semantic search or clinical summarization workflows before broader copilot use.`;
+  }
+
+  return `${name} should be enriched before broad AI deployment. Prioritize therapeutic classification, disease mapping, relationship coverage, and explainability evidence before using it in advanced RAG, copilot, or agentic workflows.`;
 }
 
 async function loadEndpoint<T>(path: string, rxcui: string): Promise<T> {
@@ -330,7 +276,6 @@ export default function AIReadinessDashboard({ drug }: Props) {
   const [data, setData] = useState<EndpointState>({});
   const [loading, setLoading] = useState(false);
   const [errorCount, setErrorCount] = useState(0);
-  const [showDriverInfo, setShowDriverInfo] = useState(false);
 
   const rxcui = drug?.rxcui;
 
@@ -379,29 +324,70 @@ export default function AIReadinessDashboard({ drug }: Props) {
   }, [rxcui]);
 
   const metrics = useMemo(() => buildAiMetrics(data, drug), [data, drug]);
-  const drivers = useMemo(() => getDriverRows(metrics), [metrics]);
   const displayName = useMemo(() => getDisplayName(drug, data), [drug, data]);
   const executiveAssessment = useMemo(
-    () => buildExecutiveAssessment(displayName, metrics, drivers),
-    [displayName, metrics, drivers],
+    () => buildExecutiveAssessment(displayName, metrics),
+    [displayName, metrics],
+  );
+  const deploymentPath = useMemo(
+    () => buildDeploymentPath(displayName, metrics),
+    [displayName, metrics],
   );
 
-  const loadedCount = Object.keys(data).length;
-
-  const useCases = [
-    { label: 'AI Copilots', icon: <Sparkles className="h-5 w-5" /> },
-    { label: 'Clinical Decision Support', icon: <ShieldCheck className="h-5 w-5" /> },
-    { label: 'Knowledge Graph Expansion', icon: <Network className="h-5 w-5" /> },
-    { label: 'Enterprise Search', icon: <Search className="h-5 w-5" /> },
-    { label: 'Predictive Analytics', icon: <TrendingUp className="h-5 w-5" /> },
+  const contextSignals = [
+    { label: 'Therapeutic Classification', value: metrics.classificationCoverage || metrics.semanticRichness },
+    { label: 'Disease Intelligence', value: metrics.semanticRichness },
+    { label: 'Mechanism Evidence', value: metrics.explainabilityScore || metrics.semanticRichness },
+    { label: 'Pharmacologic Class', value: metrics.classificationCoverage },
+    { label: 'RxNorm Relationships', value: metrics.relationshipCoverage },
+    { label: 'Knowledge Graph Context', value: metrics.graphReadiness },
   ];
 
-  const evidence = [
-    'High semantic richness',
-    'Strong explainability',
-    'Robust confidence metrics',
-    'Cross-domain coverage',
-    'Enterprise deployment support',
+  const ragSignals = [
+    {
+      label: 'Classification Coverage',
+      status: availabilityLabel(metrics.classificationCoverage || metrics.semanticRichness),
+      description: 'Structured therapeutic and pharmacologic labels are available for retrieval context.',
+    },
+    {
+      label: 'Relationship Coverage',
+      status: availabilityLabel(metrics.relationshipCoverage),
+      description: 'RxNorm and semantic relationships support connected retrieval and entity linking.',
+    },
+    {
+      label: 'Graph Coverage',
+      status: availabilityLabel(metrics.graphReadiness),
+      description: 'Knowledge graph context supports multi-hop clinical and semantic reasoning.',
+    },
+    {
+      label: 'Explainability Coverage',
+      status: availabilityLabel(metrics.explainabilityScore),
+      description: 'Evidence signals support transparent AI-generated answers and auditability.',
+    },
+  ];
+
+  const explainabilityEvidence = [
+    { label: 'Therapeutic Pathway Available', available: metrics.classificationCoverage > 0 || metrics.semanticRichness > 0 },
+    { label: 'Disease Mapping Available', available: metrics.semanticRichness > 0 },
+    { label: 'Mechanism Evidence Available', available: metrics.explainabilityScore > 0 || metrics.semanticRichness > 0 },
+    { label: 'Graph Relationships Available', available: metrics.graphReadiness > 0 },
+    { label: 'External Evidence Available', available: metrics.confidenceScore > 0 || metrics.explainabilityScore > 0 },
+  ];
+
+  const workflowFit = [
+    { label: 'AI Copilots', icon: <Sparkles className="h-5 w-5" /> },
+    { label: 'Clinical Question Answering', icon: <Brain className="h-5 w-5" /> },
+    { label: 'Semantic Search', icon: <Search className="h-5 w-5" /> },
+    { label: 'Knowledge Retrieval', icon: <Network className="h-5 w-5" /> },
+    { label: 'Agentic Workflows', icon: <Bot className="h-5 w-5" /> },
+  ];
+
+  const aiUseCases = [
+    'Medication Intelligence',
+    'Clinical Summarization',
+    'Relationship Discovery',
+    'Graph Exploration',
+    'Healthcare Search',
   ];
 
   if (!drug) return null;
@@ -412,7 +398,7 @@ export default function AIReadinessDashboard({ drug }: Props) {
         <div className="grid gap-8 lg:grid-cols-[24rem_1fr] lg:items-stretch">
           <div className="rounded-[1.75rem] border border-indigo-400/40 bg-indigo-950/30 p-7 shadow-2xl shadow-indigo-950/30">
             <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
-              AI Readiness Score
+              AI Readiness
             </p>
 
             <div className="mt-6 flex items-end gap-2">
@@ -436,33 +422,15 @@ export default function AIReadinessDashboard({ drug }: Props) {
             >
               {getDeploymentTier(metrics.finalScore)}
             </div>
-
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                  AI Percentile
-                </p>
-                <p className="mt-2 text-xl font-black text-white">
-                  {formatPercent(data.readiness?.percentiles?.ai_percentile || metrics.finalScore)}
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                  Loaded Signals
-                </p>
-                <p className="mt-2 text-xl font-black text-cyan-300">{loadedCount} / 4</p>
-              </div>
-            </div>
           </div>
 
           <div className="rounded-[1.75rem] border border-slate-800 bg-slate-950/70 p-7">
             <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
-              Executive AI Assessment
+              Intelligence Engineering Briefing
             </p>
 
             <h2 className="mt-4 text-4xl font-black tracking-tight text-white md:text-5xl">
-              AI Deployment Readiness
+              How machines understand {displayName}
             </h2>
 
             <p className="mt-5 max-w-6xl text-lg leading-8 text-slate-300 md:text-xl md:leading-9">
@@ -471,7 +439,7 @@ export default function AIReadinessDashboard({ drug }: Props) {
 
             {loading && (
               <div className="mt-6 rounded-2xl border border-blue-900/50 bg-blue-950/40 p-4 text-sm font-semibold text-blue-200">
-                Loading executive AI readiness signals…
+                Loading AI engineering signals…
               </div>
             )}
 
@@ -479,62 +447,59 @@ export default function AIReadinessDashboard({ drug }: Props) {
               <div className="mt-6 rounded-2xl border border-amber-800 bg-amber-950/40 p-4 text-sm text-amber-100">
                 <p className="font-black">Partial AI readiness profile loaded.</p>
                 <p className="mt-1 font-semibold">
-                  {loadedCount} signal{loadedCount === 1 ? '' : 's'} loaded; {errorCount} endpoint
-                  {errorCount === 1 ? '' : 's'} unavailable.
+                  Some supporting endpoints were unavailable, but the dashboard can still render from available AI context.
                 </p>
               </div>
             )}
-
-            <div className="mt-6 rounded-2xl border border-indigo-500/30 bg-indigo-950/20 px-5 py-4">
-              <p className="text-base font-semibold text-slate-200">
-                This dashboard answers what the AI readiness profile means. Statistical validation,
-                PCA, methodology, and detailed model diagnostics are now housed in Evidence & Validation.
-              </p>
-            </div>
           </div>
         </div>
       </article>
 
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr_1fr]">
-        <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
-          <div className="flex items-center justify-between gap-4">
+      <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
+        <div className="flex items-start gap-4">
+          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-cyan-400/40 bg-cyan-500/15 text-cyan-300">
+            <Brain className="h-6 w-6" />
+          </span>
+          <div>
             <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
-              AI Readiness Drivers
+              AI Context Quality
             </p>
-
-            <button
-              type="button"
-              onClick={() => setShowDriverInfo(true)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-400/50 bg-indigo-500/10 text-indigo-200 transition hover:border-cyan-300 hover:bg-cyan-500/20 hover:text-white"
-              aria-label="Explain AI readiness drivers"
-              title="Explain AI readiness drivers"
-            >
-              <Info className="h-4 w-4" />
-            </button>
+            <h3 className="mt-2 text-3xl font-black text-white">What information does AI have available?</h3>
+            <p className="mt-3 max-w-5xl text-base leading-7 text-slate-300">
+              This medication possesses structured context across therapeutic, disease, mechanism, relationship, and graph domains, providing foundational context for AI systems.
+            </p>
           </div>
+        </div>
 
-          <div className="mt-6 grid gap-4">
-            <DriverCard tone="primary" label="Primary Driver" name={drivers.primary.label} score={drivers.primary.score} />
-            <DriverCard tone="secondary" label="Secondary Driver" name={drivers.secondary.label} score={drivers.secondary.score} />
-            <DriverCard tone="limiting" label="Limiting Factor" name={drivers.limiting.label} score={drivers.limiting.score} />
-          </div>
-        </article>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {contextSignals.map((signal) => (
+            <EvidencePill key={signal.label} label={signal.label} available={signal.value > 0} />
+          ))}
+        </div>
+      </article>
 
+      <div className="grid gap-5 xl:grid-cols-2">
         <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
           <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
-            AI Deployment Use Cases
+            RAG Readiness
+          </p>
+          <h3 className="mt-3 text-2xl font-black text-white">
+            Can this medication support retrieval-augmented generation?
+          </h3>
+          <p className="mt-3 text-sm leading-6 text-slate-400">
+            RAG readiness depends on whether retrieval systems can find structured context, relationship evidence, graph connections, and explainable source signals.
           </p>
 
           <div className="mt-6 space-y-4">
-            {useCases.map((useCase) => (
-              <div
-                key={useCase.label}
-                className="flex items-center gap-4 border-b border-slate-800/60 pb-3 last:border-b-0 last:pb-0"
-              >
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-indigo-400/30 bg-indigo-500/15 text-indigo-200">
-                  {useCase.icon}
-                </span>
-                <span className="text-lg font-semibold text-white">{useCase.label}</span>
+            {ragSignals.map((item) => (
+              <div key={item.label} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-lg font-black text-white">{item.label}</p>
+                  <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-cyan-200">
+                    {item.status}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-400">{item.description}</p>
               </div>
             ))}
           </div>
@@ -542,168 +507,106 @@ export default function AIReadinessDashboard({ drug }: Props) {
 
         <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
           <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
-            AI Readiness Evidence
+            Explainability Evidence
+          </p>
+          <h3 className="mt-3 text-2xl font-black text-white">
+            Why would an AI model understand this medication?
+          </h3>
+          <p className="mt-3 text-sm leading-6 text-slate-400">
+            Explainable AI depends on structured reasons the model can retrieve, cite, summarize, and connect.
           </p>
 
-          <div className="mt-6 space-y-5">
-            {evidence.map((item) => (
-              <div key={item} className="flex items-center gap-3">
+          <div className="mt-6 space-y-4">
+            {explainabilityEvidence.map((item) => (
+              <EvidencePill key={item.label} label={item.label} available={item.available} />
+            ))}
+          </div>
+        </article>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
+            Agentic Workflow Fit
+          </p>
+          <h3 className="mt-3 text-2xl font-black text-white">
+            What AI workflows can use this medication?
+          </h3>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            {workflowFit.map((workflow) => (
+              <div
+                key={workflow.label}
+                className="flex items-center gap-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4"
+              >
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-indigo-400/30 bg-indigo-500/15 text-indigo-200">
+                  {workflow.icon}
+                </span>
+                <span className="text-base font-black text-white">{workflow.label}</span>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="rounded-[1.6rem] border border-slate-800 bg-slate-900/80 p-6 shadow-sm shadow-indigo-950/20">
+          <p className="text-xs font-black uppercase tracking-[0.28em] text-indigo-200">
+            AI Use Cases
+          </p>
+          <h3 className="mt-3 text-2xl font-black text-white">
+            What can AI do with this medication?
+          </h3>
+
+          <div className="mt-6 space-y-3">
+            {aiUseCases.map((useCase) => (
+              <div key={useCase} className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                 <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-emerald-400/40 bg-emerald-500/15 text-emerald-300">
                   <CheckCircle2 className="h-4 w-4" />
                 </span>
-                <span className="text-base font-semibold text-white">{item}</span>
+                <span className="text-base font-semibold text-white">{useCase}</span>
               </div>
             ))}
           </div>
         </article>
       </div>
 
-      <div className="rounded-2xl border border-indigo-900/40 bg-slate-950/80 px-5 py-3 text-sm font-semibold text-slate-400">
-        <span className="mr-3 text-indigo-300">ⓘ</span>
-        AI executive scoring is derived from readiness, explainability, confidence, semantic richness,
-        graph connectivity, and copilot deployment indicators.
-      </div>
-
-      {showDriverInfo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 px-6 py-8 backdrop-blur-md">
-          <div className="relative w-full max-w-5xl rounded-[2rem] border border-indigo-500/40 bg-slate-950 p-7 text-white shadow-2xl shadow-indigo-950/40 md:p-9">
-            <button
-              type="button"
-              onClick={() => setShowDriverInfo(false)}
-              className="absolute right-5 top-5 inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-cyan-400 hover:text-white"
-              aria-label="Close AI driver explanation"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <p className="text-xs font-black uppercase tracking-[0.32em] text-cyan-300">
-              AI Driver Guide
+      <article className="rounded-[1.6rem] border border-cyan-500/30 bg-gradient-to-br from-cyan-950/30 via-slate-950 to-indigo-950/30 p-6 shadow-sm shadow-indigo-950/20">
+        <div className="flex items-start gap-4">
+          <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-cyan-400/40 bg-cyan-500/15 text-cyan-300">
+            <Route className="h-6 w-6" />
+          </span>
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-cyan-200">
+              Recommended AI Deployment Path
             </p>
-
-            <h3 className="mt-4 text-4xl font-black tracking-tight text-white">
-              What these AI readiness drivers mean
-            </h3>
-
-            <div className="mt-8 grid gap-5 md:grid-cols-3">
-              <DriverGuideCard
-                tone="primary"
-                title="Primary Driver"
-                driver={drivers.primary.label}
-                score={drivers.primary.score}
-                description={getDriverDescription(drivers.primary.label, 'primary')}
-              />
-
-              <DriverGuideCard
-                tone="secondary"
-                title="Secondary Driver"
-                driver={drivers.secondary.label}
-                score={drivers.secondary.score}
-                description={getDriverDescription(drivers.secondary.label, 'secondary')}
-              />
-
-              <DriverGuideCard
-                tone="limiting"
-                title="Limiting Factor"
-                driver={drivers.limiting.label}
-                score={drivers.limiting.score}
-                description={getDriverDescription(drivers.limiting.label, 'limiting')}
-              />
-            </div>
+            <h3 className="mt-2 text-3xl font-black text-white">What should be built next?</h3>
+            <p className="mt-4 max-w-6xl text-lg leading-8 text-slate-300">
+              {deploymentPath}
+            </p>
           </div>
         </div>
-      )}
+      </article>
+
+      <div className="rounded-2xl border border-indigo-900/40 bg-slate-950/80 px-5 py-3 text-sm font-semibold text-slate-400">
+        <span className="mr-3 text-indigo-300">ⓘ</span>
+        H3B.10 reframes AI Readiness as an intelligence engineering workspace. Supporting confidence, explainability, and copilot signals remain available in the payload but are no longer presented as competing score cards.
+      </div>
     </section>
   );
 }
 
-function DriverCard({
-  tone,
-  label,
-  name,
-  score,
-}: {
-  tone: 'primary' | 'secondary' | 'limiting';
-  label: string;
-  name: string;
-  score: number;
-}) {
-  const toneClass =
-    tone === 'primary'
-      ? 'text-cyan-300 border-cyan-400/30 bg-cyan-500/10'
-      : tone === 'secondary'
-        ? 'text-blue-300 border-blue-400/30 bg-blue-500/10'
-        : 'text-amber-300 border-amber-400/30 bg-amber-500/10';
-
+function EvidencePill({ label, available }: { label: string; available: boolean }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5">
-      <div className="flex items-start gap-4">
-        <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border font-black ${toneClass}`}>
-          {tone === 'primary' ? '✓' : tone === 'secondary' ? '◎' : '!'}
-        </span>
-
-        <div>
-          <p className={`text-xs font-black uppercase tracking-[0.18em] ${toneClass.split(' ')[0]}`}>
-            {label}
-          </p>
-          <p className="mt-2 text-xl font-black text-white">
-            {name} +{Math.round(score)}
-          </p>
-          <p className="mt-2 text-sm font-semibold text-slate-400">
-            {statusForScore(score)}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DriverGuideCard({
-  tone,
-  title,
-  driver,
-  score,
-  description,
-}: {
-  tone: 'primary' | 'secondary' | 'limiting';
-  title: string;
-  driver: string;
-  score: number;
-  description: string;
-}) {
-  const colorClass =
-    tone === 'primary'
-      ? 'text-cyan-300'
-      : tone === 'secondary'
-        ? 'text-blue-300'
-        : 'text-amber-300';
-
-  const badgeClass =
-    tone === 'primary'
-      ? 'border-cyan-400/30 bg-cyan-500/15 text-cyan-300'
-      : tone === 'secondary'
-        ? 'border-blue-400/30 bg-blue-500/15 text-blue-300'
-        : 'border-amber-400/30 bg-amber-500/15 text-amber-300';
-
-  return (
-    <div className="min-h-[280px] rounded-3xl border border-slate-700/60 bg-gradient-to-br from-slate-900/90 to-slate-950 p-6">
-      <div className="flex items-start gap-4">
-        <span className={`inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-full border text-xl font-black ${badgeClass}`}>
-          {tone === 'primary' ? '✓' : tone === 'secondary' ? '◎' : '!'}
-        </span>
-
-        <div>
-          <p className={`text-xs font-black uppercase tracking-[0.22em] ${colorClass}`}>
-            {title}
-          </p>
-          <h4 className="mt-2 text-2xl font-black text-white">
-            {driver} +{Math.round(score)}
-          </h4>
-        </div>
-      </div>
-
-      <div className="my-6 h-px bg-slate-700/70" />
-
-      <p className="text-sm leading-6 text-slate-300">{description}</p>
+    <div className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+      <span
+        className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+          available
+            ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-300'
+            : 'border-amber-400/40 bg-amber-500/15 text-amber-300'
+        }`}
+      >
+        {available ? <CheckCircle2 className="h-4 w-4" /> : <GitBranch className="h-4 w-4" />}
+      </span>
+      <span className="text-base font-semibold text-white">{label}</span>
     </div>
   );
 }

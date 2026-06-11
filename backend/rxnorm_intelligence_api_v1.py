@@ -1553,6 +1553,91 @@ def build_therapeutic_narrative_v2(
     }
 
 
+
+
+# -----------------------------------------------------------------------------
+# H3C.1 — CDC Population Burden Intelligence helpers
+# -----------------------------------------------------------------------------
+
+def build_population_burden_payload(
+    conn: sqlite3.Connection,
+    rxcui: str,
+    medication_intelligence_summary: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Return narrative-first CDC PLACES population burden context.
+
+    This intentionally does not return a new visible score. It exposes a tier,
+    prevalence benchmark, and executive narrative for Clinical Intelligence.
+    """
+    if not table_exists(conn, "drug_population_burden_mapping_v1"):
+        summary = medication_intelligence_summary or {}
+        primary_condition = (
+            summary.get("primary_disease_focus")
+            or summary.get("primary_disease_mapping")
+            or "Disease focus not yet populated"
+        )
+        return {
+            "available": False,
+            "tier": "Not Available",
+            "primary_condition": primary_condition,
+            "prevalence_benchmark": "CDC PLACES population burden has not been integrated yet.",
+            "narrative": (
+                "CDC PLACES population burden context has not been generated for this medication yet. "
+                "Run H3C.1 to create drug_population_burden_mapping_v1."
+            ),
+            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
+        }
+
+    row = conn.execute(
+        """
+        SELECT *
+        FROM drug_population_burden_mapping_v1
+        WHERE CAST(rxcui AS TEXT) = ?
+        LIMIT 1
+        """,
+        (str(rxcui),),
+    ).fetchone()
+
+    if row is None:
+        summary = medication_intelligence_summary or {}
+        primary_condition = (
+            summary.get("primary_disease_focus")
+            or summary.get("primary_disease_mapping")
+            or "Disease focus not yet populated"
+        )
+        return {
+            "available": False,
+            "tier": "Not Available",
+            "primary_condition": primary_condition,
+            "prevalence_benchmark": "No CDC PLACES population burden mapping found for this medication.",
+            "narrative": (
+                f"No CDC PLACES population burden mapping was found for {primary_condition}. "
+                "The clinical dashboard can still use therapeutic and disease evidence, but population prevalence context is not yet available."
+            ),
+            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
+        }
+
+    item = dict(row)
+    return {
+        "available": True,
+        "tier": item.get("population_burden_tier"),
+        "primary_condition": item.get("primary_disease_focus") or item.get("disease_domain"),
+        "disease_domain": item.get("disease_domain"),
+        "places_measure": item.get("cdc_places_measure"),
+        "places_prevalence": item.get("cdc_places_prevalence"),
+        "population_burden_proxy": item.get("cdc_places_population_burden_proxy"),
+        "prevalence_rank": item.get("population_prevalence_rank"),
+        "burden_rank": item.get("population_burden_rank"),
+        "prevalence_benchmark": item.get("population_prevalence_benchmark"),
+        "narrative": item.get("population_burden_narrative"),
+        "source_year": item.get("source_year"),
+        "source_dataset": item.get("source_dataset"),
+        "methodology_version": item.get("methodology_version"),
+        "raw": item,
+    }
+
+
 @app.get("/explorer/drug-detail/{rxcui}", tags=["Intelligence Explorer"])
 def explorer_drug_full_detail(
     rxcui: str,
@@ -1703,6 +1788,12 @@ def explorer_drug_full_detail(
         claims_readiness_layer=claims_readiness_layer,
     )
 
+    population_burden = build_population_burden_payload(
+        conn=conn,
+        rxcui=rxcui,
+        medication_intelligence_summary=medication_intelligence_summary,
+    )
+
     def framework_value(record: Dict[str, Any], *keys: str) -> Any:
         for key in keys:
             value = record.get(key)
@@ -1804,6 +1895,7 @@ def explorer_drug_full_detail(
         "graph_intelligence": graph_intelligence,
         "claims_readiness_layer": claims_readiness_layer,
         "executive_intelligence": executive_intelligence,
+        "population_burden": population_burden,
     }
 
 def get_weighted_medication_similarity_engine(
@@ -3282,7 +3374,92 @@ def align_graph_intelligence_to_primary_pathway(
     return graph_intelligence
 
 
-# @app.get("/explorer/drug-detail/{rxcui}", tags=["Intelligence Explorer"])
+# 
+
+# -----------------------------------------------------------------------------
+# H3C.1 — CDC Population Burden Intelligence helpers
+# -----------------------------------------------------------------------------
+
+def build_population_burden_payload(
+    conn: sqlite3.Connection,
+    rxcui: str,
+    medication_intelligence_summary: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Return narrative-first CDC PLACES population burden context.
+
+    This intentionally does not return a new visible score. It exposes a tier,
+    prevalence benchmark, and executive narrative for Clinical Intelligence.
+    """
+    if not table_exists(conn, "drug_population_burden_mapping_v1"):
+        summary = medication_intelligence_summary or {}
+        primary_condition = (
+            summary.get("primary_disease_focus")
+            or summary.get("primary_disease_mapping")
+            or "Disease focus not yet populated"
+        )
+        return {
+            "available": False,
+            "tier": "Not Available",
+            "primary_condition": primary_condition,
+            "prevalence_benchmark": "CDC PLACES population burden has not been integrated yet.",
+            "narrative": (
+                "CDC PLACES population burden context has not been generated for this medication yet. "
+                "Run H3C.1 to create drug_population_burden_mapping_v1."
+            ),
+            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
+        }
+
+    row = conn.execute(
+        """
+        SELECT *
+        FROM drug_population_burden_mapping_v1
+        WHERE CAST(rxcui AS TEXT) = ?
+        LIMIT 1
+        """,
+        (str(rxcui),),
+    ).fetchone()
+
+    if row is None:
+        summary = medication_intelligence_summary or {}
+        primary_condition = (
+            summary.get("primary_disease_focus")
+            or summary.get("primary_disease_mapping")
+            or "Disease focus not yet populated"
+        )
+        return {
+            "available": False,
+            "tier": "Not Available",
+            "primary_condition": primary_condition,
+            "prevalence_benchmark": "No CDC PLACES population burden mapping found for this medication.",
+            "narrative": (
+                f"No CDC PLACES population burden mapping was found for {primary_condition}. "
+                "The clinical dashboard can still use therapeutic and disease evidence, but population prevalence context is not yet available."
+            ),
+            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
+        }
+
+    item = dict(row)
+    return {
+        "available": True,
+        "tier": item.get("population_burden_tier"),
+        "primary_condition": item.get("primary_disease_focus") or item.get("disease_domain"),
+        "disease_domain": item.get("disease_domain"),
+        "places_measure": item.get("cdc_places_measure"),
+        "places_prevalence": item.get("cdc_places_prevalence"),
+        "population_burden_proxy": item.get("cdc_places_population_burden_proxy"),
+        "prevalence_rank": item.get("population_prevalence_rank"),
+        "burden_rank": item.get("population_burden_rank"),
+        "prevalence_benchmark": item.get("population_prevalence_benchmark"),
+        "narrative": item.get("population_burden_narrative"),
+        "source_year": item.get("source_year"),
+        "source_dataset": item.get("source_dataset"),
+        "methodology_version": item.get("methodology_version"),
+        "raw": item,
+    }
+
+
+@app.get("/explorer/drug-detail/{rxcui}", tags=["Intelligence Explorer"])
 # def explorer_drug_full_detail(
 #     rxcui: str,
 #     include_raw: bool = Query(default=False, description="Include raw classification/relationship rows for audit/debugging."),

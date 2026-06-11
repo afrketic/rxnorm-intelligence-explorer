@@ -16,6 +16,26 @@ export type ExecutiveFrameworkProfile = {
   [key: string]: any;
 };
 
+
+export type PopulationBurdenProfile = {
+  available?: boolean;
+  tier?: string | null;
+  primary_condition?: string | null;
+  disease_domain?: string | null;
+  places_measure?: string | null;
+  places_prevalence?: number | string | null;
+  population_burden_proxy?: number | string | null;
+  prevalence_rank?: number | string | null;
+  burden_rank?: number | string | null;
+  prevalence_benchmark?: string | null;
+  narrative?: string | null;
+  source_year?: string | number | null;
+  source_dataset?: string | null;
+  methodology_version?: string | null;
+  raw?: Record<string, any>;
+  [key: string]: any;
+};
+
 export type DrugCard = {
   rxcui: string;
   drug_name?: string;
@@ -35,6 +55,7 @@ export type DrugCard = {
   eii?: ExecutiveFrameworkProfile;
   eis?: ExecutiveFrameworkProfile;
   executive_impact?: Record<string, any>;
+  population_burden?: PopulationBurdenProfile;
   [key: string]: any;
 };
 
@@ -127,6 +148,7 @@ export async function getDrug(rxcui: string) {
       eii: data.eii,
       eis: data.eis,
       executive_impact: data.executive_impact,
+      population_burden: data.population_burden,
     },
   };
 }
