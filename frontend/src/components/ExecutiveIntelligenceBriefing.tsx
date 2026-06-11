@@ -130,6 +130,24 @@ function getClinicalSnapshot(drug: any) {
   return { diseaseFocus, mechanism };
 }
 
+
+function getPopulationBurden(drug: any) {
+  const population = drug?.population_burden || drug?.drug?.population_burden || drug?.clinical_briefing?.population_burden || {};
+  const tier = String(population?.tier || '').trim();
+  const primaryCondition = String(population?.primary_condition || population?.primaryCondition || '').trim();
+  const benchmark = String(population?.prevalence_benchmark || population?.prevalenceBenchmark || '').trim();
+  const narrative = String(population?.narrative || '').trim();
+
+  return {
+    available: Boolean(population?.available),
+    tier,
+    primaryCondition,
+    benchmark,
+    narrative,
+    isHighBurden: ['very high', 'high'].includes(tier.toLowerCase()),
+  };
+}
+
 function buildExecutiveSummary(drug: any) {
   const drugName = getDrugName(drug);
   const tier = getTier(drug);
@@ -141,7 +159,12 @@ function buildExecutiveSummary(drug: any) {
     valueFrom(drug, ['ehi_v6_percentile', 'ehi_percentile', 'portfolio_percentile'], 0),
   );
 
-  return `${drugName} matters because it combines ${tier.toLowerCase()} enterprise importance with clinically meaningful context in ${clinical.diseaseFocus}. Its profile supports ${claimsStatus.toLowerCase()} claims workflows, ${aiStatus.toLowerCase()} intelligence workflows, ${graphStatus.toLowerCase()} inside the knowledge graph, and ${portfolioPosition.toLowerCase()} strategic positioning across the medication universe.`;
+  const population = getPopulationBurden(drug);
+  const populationPhrase = population.isHighBurden
+    ? ` It also addresses a ${population.tier.toLowerCase()} population-burden condition${population.primaryCondition ? ` (${population.primaryCondition})` : ''}, strengthening its real-world disease-burden relevance.`
+    : '';
+
+  return `${drugName} matters because it combines ${tier.toLowerCase()} enterprise importance with clinically meaningful context in ${clinical.diseaseFocus}. Its profile supports ${claimsStatus.toLowerCase()} claims workflows, ${aiStatus.toLowerCase()} intelligence workflows, ${graphStatus.toLowerCase()} inside the knowledge graph, and ${portfolioPosition.toLowerCase()} strategic positioning across the medication universe.${populationPhrase}`;
 }
 
 function buildStrategicBadges(drug: any) {
@@ -151,8 +174,10 @@ function buildStrategicBadges(drug: any) {
   );
   const aiStatus = getAiStatus(drug);
   const claimsStatus = getClaimsStatus(drug);
+  const population = getPopulationBurden(drug);
+  const populationBadge = population.isHighBurden ? 'High Population Burden Condition' : null;
 
-  const badges = [tier, percentileLabel, aiStatus, claimsStatus].filter(
+  const badges = [tier, percentileLabel, populationBadge, aiStatus, claimsStatus].filter(
     (value, index, array) => value && array.indexOf(value) === index,
   );
 
@@ -172,6 +197,7 @@ function buildWhyItMatters(drug: any) {
     toNumber(valueFrom(drug, ['ehi_v6_score', 'healthcare_importance_score'], 0)),
     toNumber(valueFrom(drug, ['overall_intelligence_score', 'eii_score'], 0)),
   );
+  const population = getPopulationBurden(drug);
 
   const drivers = [
     {
@@ -183,6 +209,11 @@ function buildWhyItMatters(drug: any) {
       label: 'High Disease Burden',
       detail: 'Disease context supports clinical relevance, population-health value, and executive attention.',
       active: diseaseBurden >= 60,
+    },
+    {
+      label: 'High Population Burden Condition',
+      detail: population.narrative || 'CDC PLACES prevalence context indicates meaningful real-world disease burden.',
+      active: population.isHighBurden,
     },
     {
       label: 'Strong Evidence Base',
@@ -206,9 +237,11 @@ function buildRecommendedAction(drug: any) {
   const tier = getTier(drug).toLowerCase();
   const aiStatus = getAiStatus(drug).toLowerCase();
   const claimsStatus = getClaimsStatus(drug).toLowerCase();
+  const population = getPopulationBurden(drug);
+  const populationClause = population.isHighBurden ? ' population-health burden review,' : '';
 
   if (tier.includes('critical') || tier.includes('strategic')) {
-    return `${drugName} should be prioritized for executive healthcare intelligence workflows, including enterprise analytics, AI deployment, clinical interpretation, claims operationalization, and portfolio strategy initiatives.`;
+    return `${drugName} should be prioritized for executive healthcare intelligence workflows, including enterprise analytics, AI deployment, clinical interpretation,${populationClause} claims operationalization, and portfolio strategy initiatives.`;
   }
 
   if (aiStatus.includes('ready') || claimsStatus.includes('ready')) {
@@ -316,6 +349,13 @@ export default function ExecutiveIntelligenceBriefing({ drug }: Props) {
                 valueFrom(drug, ['ehi_v6_percentile', 'ehi_percentile', 'portfolio_percentile'], 0),
               )}
             />
+            {getPopulationBurden(drug).isHighBurden && (
+              <SnapshotCard
+                label="Population Burden"
+                primary={getPopulationBurden(drug).tier}
+                secondary={getPopulationBurden(drug).primaryCondition || getPopulationBurden(drug).benchmark}
+              />
+            )}
           </div>
         </div>
       </section>
