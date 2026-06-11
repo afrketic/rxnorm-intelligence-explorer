@@ -6,7 +6,7 @@ import re
 from copy import deepcopy
 from datetime import datetime, timezone
 
-from rxnorm_intelligence_api_v1 import (
+from backend.rxnorm_intelligence_api_v1 import (
     get_full_application_payload,
     get_therapeutic_class_explorer_package,
     get_ndc_crosswalk,
