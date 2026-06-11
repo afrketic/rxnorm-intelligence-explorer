@@ -1556,75 +1556,102 @@ def build_therapeutic_narrative_v2(
 
 
 # -----------------------------------------------------------------------------
-# H4A.1 — Emerging Medication Intelligence helpers
+# H4B.3 — Disease Burden Forecasting helpers
 # -----------------------------------------------------------------------------
 
-def build_emerging_intelligence_payload(
+def build_disease_burden_forecast_payload(
     conn: sqlite3.Connection,
-    rxcui: str,
+    medication_intelligence_summary: Optional[Dict[str, Any]] = None,
+    population_burden: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Return forward-looking emerging medication intelligence without introducing
-    a new visible score.
+    Return narrative-first disease burden forecasting context.
 
-    H4A.1 productizes existing predictive and strategic opportunity tables into
-    executive-facing signals: Emerging Priority, Watchlist, Rising, Stable, and
-    Declining.
+    H4B.3 intentionally exposes trend signals rather than a new forecast score.
+    Signals: Accelerating, Growing, Stable, Declining.
     """
-    methodology_version = "H4A1_EMERGING_MEDICATION_INTELLIGENCE_PRODUCTIZATION_V1"
+    summary = medication_intelligence_summary or {}
+    population = population_burden or {}
+    lookup_candidates = [
+        population.get("disease_domain"),
+        population.get("primary_condition"),
+        summary.get("primary_disease_focus"),
+        summary.get("primary_disease_mapping"),
+        summary.get("secondary_disease_focus"),
+    ]
+    lookup_candidates = [str(value).strip() for value in lookup_candidates if value not in (None, "", "nan", "None")]
+    fallback_condition = lookup_candidates[0] if lookup_candidates else "Disease focus not yet populated"
 
-    if not table_exists(conn, "emerging_medication_intelligence_v1"):
+    if not table_exists(conn, "disease_burden_forecasting_v1"):
         return {
             "available": False,
-            "signal": "Stable",
-            "emerging_signal": "Stable",
-            "watch_reason": (
-                "H4A.1 emerging medication intelligence has not been generated yet. "
-                "Run build_h4a1_emerging_medication_intelligence.py to create the emerging intelligence layer."
+            "disease_domain": fallback_condition,
+            "trend_signal": "Not Available",
+            "burden_trend_signal": "Not Available",
+            "forecast_narrative": (
+                "Disease burden forecasting has not been generated yet. Run H4B.3 to create "
+                "disease_burden_forecasting_v1."
             ),
-            "executive_action": "Run H4A.1 to enable forward-looking medication watch signals.",
-            "methodology_version": methodology_version,
+            "forecast_version": "H4B3_DISEASE_BURDEN_FORECASTING_PRODUCTIZATION_V1",
         }
 
-    row = conn.execute(
-        """
-        SELECT *
-        FROM emerging_medication_intelligence_v1
-        WHERE CAST(rxcui AS TEXT) = ?
-        LIMIT 1
-        """,
-        (str(rxcui),),
-    ).fetchone()
+    row = None
+    for candidate in lookup_candidates:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM disease_burden_forecasting_v1
+            WHERE LOWER(CAST(disease_domain AS TEXT)) = LOWER(?)
+               OR LOWER(CAST(canonical_disease_name AS TEXT)) = LOWER(?)
+               OR LOWER(CAST(? AS TEXT)) LIKE '%' || LOWER(CAST(disease_domain AS TEXT)) || '%'
+               OR LOWER(CAST(? AS TEXT)) LIKE '%' || LOWER(CAST(canonical_disease_name AS TEXT)) || '%'
+            ORDER BY
+                CASE burden_trend_signal
+                    WHEN 'Accelerating' THEN 1
+                    WHEN 'Growing' THEN 2
+                    WHEN 'Stable' THEN 3
+                    WHEN 'Declining' THEN 4
+                    ELSE 9
+                END,
+                population_burden_rank DESC,
+                population_prevalence_rank DESC
+            LIMIT 1
+            """,
+            (candidate, candidate, candidate, candidate),
+        ).fetchone()
+        if row:
+            break
 
     if row is None:
         return {
             "available": False,
-            "signal": "Stable",
-            "emerging_signal": "Stable",
-            "watch_reason": "No emerging medication signal is currently available for this medication.",
-            "executive_action": "Maintain as stable intelligence context and reassess during the next predictive refresh.",
-            "methodology_version": methodology_version,
+            "disease_domain": fallback_condition,
+            "trend_signal": "Not Available",
+            "burden_trend_signal": "Not Available",
+            "forecast_narrative": (
+                f"No disease burden forecast was found for {fallback_condition}. The platform can still use "
+                "current clinical and population burden context, but forward-looking trend context is not yet mapped."
+            ),
+            "forecast_version": "H4B3_DISEASE_BURDEN_FORECASTING_PRODUCTIZATION_V1",
         }
 
     item = dict(row)
-    signal = item.get("emerging_signal") or "Stable"
-
+    signal = item.get("burden_trend_signal") or "Stable"
     return {
         "available": True,
-        "signal": signal,
-        "emerging_signal": signal,
-        "watch_reason": item.get("watch_reason"),
-        "executive_action": item.get("executive_action"),
-        "deployment_priority_tier": item.get("deployment_priority_tier"),
-        "strategic_opportunity_tier": item.get("strategic_opportunity_tier"),
-        "strategic_opportunity_type": item.get("strategic_opportunity_type"),
-        "market_position": item.get("market_position"),
-        "strategic_opportunity_rank": item.get("strategic_opportunity_rank"),
-        "methodology_version": item.get("methodology_version") or methodology_version,
+        "disease_domain": item.get("disease_domain"),
+        "canonical_disease_name": item.get("canonical_disease_name"),
+        "current_prevalence": item.get("current_prevalence"),
+        "current_mortality": item.get("current_mortality"),
+        "population_burden_tier": item.get("population_burden_tier"),
+        "trend_signal": signal,
+        "burden_trend_signal": signal,
+        "forecast_narrative": item.get("forecast_narrative"),
+        "forecast_version": item.get("forecast_version"),
+        "source_year": item.get("source_year"),
+        "source_dataset": item.get("source_dataset"),
         "raw": item,
     }
-
-
 
 @app.get("/explorer/drug-detail/{rxcui}", tags=["Intelligence Explorer"])
 def explorer_drug_full_detail(
@@ -1776,9 +1803,9 @@ def explorer_drug_full_detail(
         claims_readiness_layer=claims_readiness_layer,
     )
 
-    emerging_intelligence = build_emerging_intelligence_payload(
+    disease_burden_forecast = build_disease_burden_forecast_payload(
         conn=conn,
-        rxcui=rxcui,
+        medication_intelligence_summary=medication_intelligence_summary,
     )
 
     def framework_value(record: Dict[str, Any], *keys: str) -> Any:
@@ -1882,7 +1909,7 @@ def explorer_drug_full_detail(
         "graph_intelligence": graph_intelligence,
         "claims_readiness_layer": claims_readiness_layer,
         "executive_intelligence": executive_intelligence,
-        "emerging_intelligence": emerging_intelligence,
+        "disease_burden_forecast": disease_burden_forecast,
     }
 
 def get_weighted_medication_similarity_engine(
@@ -5924,6 +5951,72 @@ def get_production_platform_readiness_summary():
     return rows_to_dicts(rows)
 
 
+
+
+# =============================================================================
+# H4B.3 — Disease Burden Forecasting API Routes
+# =============================================================================
+
+@app.get("/disease-burden/forecasting", tags=["Disease Burden Forecasting"])
+def get_disease_burden_forecasting(
+    limit: int = Query(default=25, ge=1, le=250),
+    signal: Optional[str] = Query(default=None, description="Accelerating, Growing, Stable, or Declining"),
+):
+    with get_connection() as conn:
+        validate_table(conn, "disease_burden_forecasting_v1")
+        params: List[Any] = []
+        where_clause = ""
+        if signal:
+            where_clause = "WHERE burden_trend_signal = ?"
+            params.append(signal)
+
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM disease_burden_forecasting_v1
+            {where_clause}
+            ORDER BY
+                CASE burden_trend_signal
+                    WHEN 'Accelerating' THEN 1
+                    WHEN 'Growing' THEN 2
+                    WHEN 'Stable' THEN 3
+                    WHEN 'Declining' THEN 4
+                    ELSE 9
+                END,
+                population_burden_rank DESC,
+                population_prevalence_rank DESC,
+                mapped_medication_count DESC
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+    return rows_to_dicts(rows)
+
+
+@app.get("/disease-burden/forecasting/summary", tags=["Disease Burden Forecasting"])
+def get_disease_burden_forecasting_summary():
+    with get_connection() as conn:
+        validate_table(conn, "disease_burden_forecasting_v1")
+        rows = conn.execute(
+            """
+            SELECT burden_trend_signal, COUNT(*) AS disease_area_count
+            FROM disease_burden_forecasting_v1
+            GROUP BY burden_trend_signal
+            ORDER BY
+                CASE burden_trend_signal
+                    WHEN 'Accelerating' THEN 1
+                    WHEN 'Growing' THEN 2
+                    WHEN 'Stable' THEN 3
+                    WHEN 'Declining' THEN 4
+                    ELSE 9
+                END
+            """
+        ).fetchall()
+
+    return rows_to_dicts(rows)
+
+
 # =============================================================================
 # Frontend compatibility aliases
 # =============================================================================
@@ -8096,111 +8189,3 @@ def table_preview(
 @app.get("/tables/{table_name}/count", response_model=TableCountResponse, tags=["Internal"])
 def table_count(table_name: str) -> TableCountResponse:
     return TableCountResponse(table=table_name, row_count=count_table(table_name))
-
-
-# =============================================================================
-# H4A.1 Emerging Medication Intelligence API Routes
-# =============================================================================
-
-@app.get("/emerging/{rxcui}", tags=["Emerging Medication Intelligence"])
-def get_emerging_medication_intelligence(rxcui: str) -> Dict[str, Any]:
-    with get_connection() as conn:
-        return build_emerging_intelligence_payload(conn, rxcui)
-
-
-@app.get("/emerging/top", tags=["Emerging Medication Intelligence"])
-def get_top_emerging_medications(
-    limit: int = Query(default=25, ge=1, le=250),
-    signal: Optional[str] = Query(default=None),
-) -> List[Dict[str, Any]]:
-    with get_connection() as conn:
-        validate_table(conn, "emerging_medication_intelligence_v1")
-
-        params: List[Any] = []
-        where_clause = ""
-
-        if signal:
-            where_clause = "WHERE emerging_signal = ?"
-            params.append(signal)
-
-        rows = conn.execute(
-            f"""
-            SELECT *
-            FROM emerging_medication_intelligence_v1
-            {where_clause}
-            ORDER BY
-                CASE emerging_signal
-                    WHEN 'Emerging Priority' THEN 1
-                    WHEN 'Watchlist' THEN 2
-                    WHEN 'Rising' THEN 3
-                    WHEN 'Stable' THEN 4
-                    WHEN 'Declining' THEN 5
-                    ELSE 99
-                END,
-                strategic_opportunity_rank ASC,
-                display_name ASC
-            LIMIT ?
-            """,
-            params + [limit],
-        ).fetchall()
-
-    return rows_to_dicts(rows)
-
-
-@app.get("/watchlist", tags=["Emerging Medication Intelligence"])
-def get_executive_watchlist(
-    limit: int = Query(default=25, ge=1, le=250),
-) -> List[Dict[str, Any]]:
-    with get_connection() as conn:
-        validate_table(conn, "executive_watchlist_v1")
-        rows = conn.execute(
-            """
-            SELECT *
-            FROM executive_watchlist_v1
-            ORDER BY watchlist_rank ASC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
-
-    return rows_to_dicts(rows)
-
-
-@app.get("/emerging/classes", tags=["Emerging Medication Intelligence"])
-def get_emerging_therapeutic_classes(
-    limit: int = Query(default=25, ge=1, le=250),
-    signal: Optional[str] = Query(default=None),
-) -> List[Dict[str, Any]]:
-    with get_connection() as conn:
-        validate_table(conn, "emerging_therapeutic_class_v1")
-
-        params: List[Any] = []
-        where_clause = ""
-
-        if signal:
-            where_clause = "WHERE emerging_signal = ?"
-            params.append(signal)
-
-        rows = conn.execute(
-            f"""
-            SELECT *
-            FROM emerging_therapeutic_class_v1
-            {where_clause}
-            ORDER BY
-                CASE emerging_signal
-                    WHEN 'Emerging Priority' THEN 1
-                    WHEN 'Watchlist' THEN 2
-                    WHEN 'Rising' THEN 3
-                    WHEN 'Stable' THEN 4
-                    WHEN 'Declining' THEN 5
-                    ELSE 99
-                END,
-                enterprise_opportunity_rank ASC,
-                portfolio_name ASC
-            LIMIT ?
-            """,
-            params + [limit],
-        ).fetchall()
-
-    return rows_to_dicts(rows)
-

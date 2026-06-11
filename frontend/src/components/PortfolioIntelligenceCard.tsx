@@ -3,9 +3,9 @@ import {
   getPortfolioOpportunity,
   getPortfolioTopOpportunities,
   getTherapeuticPortfolios,
-  getEmergingMedicationTop,
+  getDiseaseBurdenForecasting,
   PortfolioIntelligenceItem,
-  EmergingMedicationIntelligence,
+  DiseaseBurdenForecastProfile,
 } from '../lib/api';
 
 function formatNumber(value: unknown, fallback = 0) {
@@ -73,6 +73,28 @@ function PortfolioMiniRow({ item }: { item: PortfolioIntelligenceItem }) {
   );
 }
 
+
+function DiseaseForecastRow({ item }: { item: DiseaseBurdenForecastProfile }) {
+  return (
+    <div className="rounded-2xl border border-amber-300/15 bg-amber-400/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-300">Future Disease Priority</p>
+          <p className="mt-2 text-sm font-black leading-5 text-white">
+            {item.disease_domain || item.canonical_disease_name || 'Disease Area'}
+          </p>
+        </div>
+        <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-100">
+          {item.trend_signal || item.burden_trend_signal || 'Stable'}
+        </span>
+      </div>
+      <p className="mt-3 text-xs font-semibold leading-5 text-amber-50/80">
+        {item.forecast_narrative || 'Disease burden trend context supports forward-looking portfolio planning.'}
+      </p>
+    </div>
+  );
+}
+
 function HeroMetric({ label, value, helper }: { label: string; value: string; helper: string }) {
   return (
     <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4">
@@ -83,38 +105,11 @@ function HeroMetric({ label, value, helper }: { label: string; value: string; he
   );
 }
 
-
-
-function EmergingOpportunityRow({ item }: { item: EmergingMedicationIntelligence }) {
-  const signal = item.emerging_signal || item.signal || 'Stable';
-  return (
-    <div className="rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-black text-white">
-            {item.display_name || item.rxcui || 'Medication'}
-          </p>
-          <p className="mt-2 text-xs font-semibold leading-5 text-amber-50/80">
-            {item.watch_reason || 'Forward-looking predictive and strategic opportunity signals support monitoring.'}
-          </p>
-        </div>
-        <span className="shrink-0 rounded-full border border-amber-200/30 bg-amber-200/10 px-3 py-1 text-xs font-black text-amber-100">
-          {signal}
-        </span>
-      </div>
-      <p className="mt-3 text-xs font-semibold leading-5 text-slate-300">
-        <span className="font-black text-amber-100">Recommended action: </span>
-        {item.executive_action || 'Monitor during the next executive portfolio review.'}
-      </p>
-    </div>
-  );
-}
-
 export default function PortfolioIntelligenceCard() {
   const [therapeutic, setTherapeutic] = useState<PortfolioIntelligenceItem[]>([]);
   const [opportunities, setOpportunities] = useState<PortfolioIntelligenceItem[]>([]);
-  const [emergingOpportunities, setEmergingOpportunities] = useState<EmergingMedicationIntelligence[]>([]);
   const [glp1, setGlp1] = useState<PortfolioIntelligenceItem | null>(null);
+  const [diseaseForecasts, setDiseaseForecasts] = useState<DiseaseBurdenForecastProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,18 +121,18 @@ export default function PortfolioIntelligenceCard() {
       setError(null);
 
       try {
-        const [therapeuticRows, opportunityRows, emergingRows, glp1Row] = await Promise.all([
+        const [therapeuticRows, opportunityRows, glp1Row, diseaseForecastRows] = await Promise.all([
           getTherapeuticPortfolios(5),
           getPortfolioTopOpportunities(25),
-          getEmergingMedicationTop(6).catch(() => []),
           getPortfolioOpportunity('ATC4', 'A10BJ').catch(() => null),
+          getDiseaseBurdenForecasting(10).catch(() => []),
         ]);
 
         if (!active) return;
         setTherapeutic(therapeuticRows);
         setOpportunities(opportunityRows);
-        setEmergingOpportunities(emergingRows);
         setGlp1(glp1Row);
+        setDiseaseForecasts(diseaseForecastRows);
       } catch (err) {
         if (!active) return;
         setError(err instanceof Error ? err.message : 'Unable to load Portfolio Intelligence.');
@@ -242,33 +237,32 @@ export default function PortfolioIntelligenceCard() {
           </div>
         </div>
 
-        <div className="mt-5 rounded-3xl border border-amber-300/20 bg-slate-950/45 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+
+        <div className="mt-5 rounded-3xl border border-amber-300/15 bg-slate-950/45 p-5">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
-                Emerging Portfolio Opportunities
+                Future Disease Priorities
               </p>
-              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
-                Forward-looking signals identify medications that may become more important across predictive deployment, strategic opportunity, and executive portfolio planning. This section intentionally uses signals, not another score.
+              <h3 className="mt-2 text-2xl font-black text-white">
+                Population burden trend signals
+              </h3>
+              <p className="mt-2 max-w-4xl text-sm font-semibold leading-6 text-slate-300">
+                H4B.3 converts CDC population-burden evidence into forward-looking disease-area signals so portfolio planning can identify which disease areas are becoming more important to healthcare.
               </p>
             </div>
-            <span className="rounded-full border border-amber-200/30 bg-amber-200/10 px-3 py-1 text-xs font-black text-amber-100">
-              H4A.1 Predictive Intelligence
+            <span className="w-fit rounded-full border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-amber-100">
+              No forecast score
             </span>
           </div>
 
-          <div className="mt-4 grid gap-3 xl:grid-cols-3">
-            {emergingOpportunities.slice(0, 6).map((item) => (
-              <EmergingOpportunityRow
-                key={`emerging-${item.rxcui || item.display_name}`}
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {diseaseForecasts.slice(0, 6).map((item) => (
+              <DiseaseForecastRow
+                key={`disease-forecast-${item.disease_domain || item.canonical_disease_name}`}
                 item={item}
               />
             ))}
-            {!loading && emergingOpportunities.length === 0 && (
-              <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-sm font-semibold text-slate-300 xl:col-span-3">
-                Emerging opportunity signals are not available yet. Run H4A.1 to create emerging_medication_intelligence_v1.
-              </div>
-            )}
           </div>
         </div>
 

@@ -17,56 +17,22 @@ export type ExecutiveFrameworkProfile = {
 };
 
 
-export type EmergingSignal = 'Emerging Priority' | 'Watchlist' | 'Rising' | 'Stable' | 'Declining';
-
-export type EmergingMedicationIntelligence = {
+export type DiseaseBurdenForecastProfile = {
   available?: boolean;
-  rxcui?: string;
-  display_name?: string;
-  signal?: EmergingSignal | string | null;
-  emerging_signal?: EmergingSignal | string | null;
-  watch_reason?: string | null;
-  executive_action?: string | null;
-  deployment_priority_tier?: string | null;
-  strategic_opportunity_tier?: string | null;
-  strategic_opportunity_type?: string | null;
-  market_position?: string | null;
-  strategic_opportunity_rank?: number | string | null;
-  methodology_version?: string | null;
+  disease_domain?: string | null;
+  canonical_disease_name?: string | null;
+  current_prevalence?: number | string | null;
+  current_mortality?: number | string | null;
+  population_burden_tier?: string | null;
+  trend_signal?: 'Accelerating' | 'Growing' | 'Stable' | 'Declining' | 'Not Available' | string | null;
+  burden_trend_signal?: 'Accelerating' | 'Growing' | 'Stable' | 'Declining' | 'Not Available' | string | null;
+  forecast_narrative?: string | null;
+  forecast_version?: string | null;
+  source_year?: string | number | null;
+  source_dataset?: string | null;
   raw?: Record<string, any>;
   [key: string]: any;
 };
-
-export type ExecutiveWatchlistItem = {
-  watchlist_rank?: number | string | null;
-  rxcui?: string;
-  display_name?: string;
-  signal?: EmergingSignal | string | null;
-  reason?: string | null;
-  recommended_action?: string | null;
-  methodology_version?: string | null;
-  build_timestamp?: string | null;
-  [key: string]: any;
-};
-
-export type EmergingTherapeuticClass = {
-  portfolio_type?: string | null;
-  portfolio_code?: string | null;
-  portfolio_name?: string | null;
-  emerging_signal?: EmergingSignal | string | null;
-  opportunity_tier?: string | null;
-  portfolio_context?: string | null;
-  recommended_action?: string | null;
-  opportunity_use_case?: string | null;
-  enterprise_opportunity_rank?: number | string | null;
-  executive_opportunity_rank?: number | string | null;
-  medication_count?: number | string | null;
-  enterprise_critical_count?: number | string | null;
-  strategic_priority_count?: number | string | null;
-  methodology_version?: string | null;
-  [key: string]: any;
-};
-
 
 export type DrugCard = {
   rxcui: string;
@@ -87,7 +53,6 @@ export type DrugCard = {
   eii?: ExecutiveFrameworkProfile;
   eis?: ExecutiveFrameworkProfile;
   executive_impact?: Record<string, any>;
-  emerging_intelligence?: EmergingMedicationIntelligence;
   [key: string]: any;
 };
 
@@ -180,7 +145,6 @@ export async function getDrug(rxcui: string) {
       eii: data.eii,
       eis: data.eis,
       executive_impact: data.executive_impact,
-      emerging_intelligence: data.emerging_intelligence,
     },
   };
 }
@@ -531,6 +495,20 @@ export async function getPortfolioOpportunity(
   );
 }
 
+export async function getDiseaseBurdenForecasting(
+  limit = 25,
+  signal?: string,
+): Promise<DiseaseBurdenForecastProfile[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (signal) params.set('signal', signal);
+  return requestJson<DiseaseBurdenForecastProfile[]>(`/disease-burden/forecasting?${params.toString()}`);
+}
+
+export async function getDiseaseBurdenForecastingSummary(): Promise<Array<{ burden_trend_signal?: string; disease_area_count?: number; [key: string]: any }>> {
+  return requestJson<Array<{ burden_trend_signal?: string; disease_area_count?: number; [key: string]: any }>>('/disease-burden/forecasting/summary');
+}
+
+
 
 export type EnterpriseOpportunityItem = PortfolioIntelligenceItem & {
   normalized_importance_score?: number;
@@ -577,33 +555,4 @@ export async function getEnterpriseOpportunityPortfolio(
   return requestJson<EnterpriseOpportunityItem>(
     `/enterprise-opportunities/portfolio/${encodeURIComponent(String(portfolioType))}/${encodeURIComponent(String(portfolioCode))}`,
   );
-}
-
-
-export async function getEmergingMedication(rxcui: string): Promise<EmergingMedicationIntelligence> {
-  return requestJson<EmergingMedicationIntelligence>(
-    `/emerging/${encodeURIComponent(String(rxcui))}`,
-  );
-}
-
-export async function getEmergingMedicationTop(
-  limit = 10,
-  signal?: EmergingSignal | string,
-): Promise<EmergingMedicationIntelligence[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (signal) params.set('signal', String(signal));
-  return requestJson<EmergingMedicationIntelligence[]>(`/emerging/top?${params.toString()}`);
-}
-
-export async function getExecutiveWatchlist(limit = 25): Promise<ExecutiveWatchlistItem[]> {
-  return requestJson<ExecutiveWatchlistItem[]>(`/watchlist?limit=${encodeURIComponent(String(limit))}`);
-}
-
-export async function getEmergingTherapeuticClasses(
-  limit = 25,
-  signal?: EmergingSignal | string,
-): Promise<EmergingTherapeuticClass[]> {
-  const params = new URLSearchParams({ limit: String(limit) });
-  if (signal) params.set('signal', String(signal));
-  return requestJson<EmergingTherapeuticClass[]>(`/emerging/classes?${params.toString()}`);
 }

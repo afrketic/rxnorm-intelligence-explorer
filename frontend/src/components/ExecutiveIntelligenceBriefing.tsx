@@ -19,8 +19,7 @@ function valueFrom(source: any, keys: string[], fallback: any = null) {
       source?.medication_intelligence_summary?.[key] ??
       source?.claims_readiness_layer?.[key] ??
       source?.graph_metrics?.[key] ??
-      source?.portfolio_benchmark?.[key] ??
-      source?.emerging_intelligence?.[key];
+      source?.portfolio_benchmark?.[key];
 
     if (value !== null && value !== undefined && value !== '') return value;
   }
@@ -150,30 +149,18 @@ function getPopulationBurden(drug: any) {
 }
 
 
-
-function getEmergingIntelligence(drug: any) {
-  const emerging =
-    drug?.emerging_intelligence ||
-    drug?.drug?.emerging_intelligence ||
-    drug?.executive_briefing?.emerging_intelligence ||
-    {};
-
-  const signal = String(
-    emerging?.emerging_signal ||
-      emerging?.signal ||
-      'Stable',
-  ).trim();
-
-  const watchReason = String(emerging?.watch_reason || '').trim();
-  const executiveAction = String(emerging?.executive_action || '').trim();
+function getDiseaseBurdenForecast(drug: any) {
+  const forecast = drug?.disease_burden_forecast || drug?.drug?.disease_burden_forecast || {};
+  const signal = String(forecast?.trend_signal || forecast?.burden_trend_signal || '').trim();
+  const diseaseDomain = String(forecast?.disease_domain || forecast?.canonical_disease_name || '').trim();
+  const narrative = String(forecast?.forecast_narrative || '').trim();
 
   return {
-    available: Boolean(emerging?.available),
-    signal: signal || 'Stable',
-    watchReason,
-    executiveAction,
-    isEmergingPriority: signal === 'Emerging Priority',
-    isWatchSignal: ['Emerging Priority', 'Watchlist', 'Rising'].includes(signal),
+    available: Boolean(forecast?.available),
+    signal,
+    diseaseDomain,
+    narrative,
+    isGrowing: ['accelerating', 'growing'].includes(signal.toLowerCase()),
   };
 }
 
@@ -189,15 +176,15 @@ function buildExecutiveSummary(drug: any) {
   );
 
   const population = getPopulationBurden(drug);
-  const emerging = getEmergingIntelligence(drug);
+  const diseaseForecast = getDiseaseBurdenForecast(drug);
   const populationPhrase = population.isHighBurden
     ? ` It also addresses a ${population.tier.toLowerCase()} population-burden condition${population.primaryCondition ? ` (${population.primaryCondition})` : ''}, strengthening its real-world disease-burden relevance.`
     : '';
-  const emergingPhrase = emerging.isWatchSignal
-    ? ` Forward-looking intelligence classifies it as ${emerging.signal.toLowerCase()}, indicating that it should be monitored as enterprise relevance evolves.`
+  const forecastPhrase = diseaseForecast.isGrowing
+    ? ` Forward-looking burden intelligence flags ${diseaseForecast.diseaseDomain || clinical.diseaseFocus} as ${diseaseForecast.signal.toLowerCase()}, adding future healthcare relevance to the executive case.`
     : '';
 
-  return `${drugName} matters because it combines ${tier.toLowerCase()} enterprise importance with clinically meaningful context in ${clinical.diseaseFocus}. Its profile supports ${claimsStatus.toLowerCase()} claims workflows, ${aiStatus.toLowerCase()} intelligence workflows, ${graphStatus.toLowerCase()} inside the knowledge graph, and ${portfolioPosition.toLowerCase()} strategic positioning across the medication universe.${populationPhrase}${emergingPhrase}`;
+  return `${drugName} matters because it combines ${tier.toLowerCase()} enterprise importance with clinically meaningful context in ${clinical.diseaseFocus}. Its profile supports ${claimsStatus.toLowerCase()} claims workflows, ${aiStatus.toLowerCase()} intelligence workflows, ${graphStatus.toLowerCase()} inside the knowledge graph, and ${portfolioPosition.toLowerCase()} strategic positioning across the medication universe.${populationPhrase}${forecastPhrase}`;
 }
 
 function buildStrategicBadges(drug: any) {
@@ -208,11 +195,11 @@ function buildStrategicBadges(drug: any) {
   const aiStatus = getAiStatus(drug);
   const claimsStatus = getClaimsStatus(drug);
   const population = getPopulationBurden(drug);
+  const diseaseForecast = getDiseaseBurdenForecast(drug);
   const populationBadge = population.isHighBurden ? 'High Population Burden Condition' : null;
-  const emerging = getEmergingIntelligence(drug);
-  const emergingBadge = emerging.isWatchSignal ? `Emerging Strategic Priority: ${emerging.signal}` : null;
+  const diseaseForecastBadge = diseaseForecast.isGrowing ? 'Growing Disease Burden' : null;
 
-  const badges = [tier, percentileLabel, emergingBadge, populationBadge, aiStatus, claimsStatus].filter(
+  const badges = [tier, percentileLabel, populationBadge, diseaseForecastBadge, aiStatus, claimsStatus].filter(
     (value, index, array) => value && array.indexOf(value) === index,
   );
 
@@ -233,7 +220,7 @@ function buildWhyItMatters(drug: any) {
     toNumber(valueFrom(drug, ['overall_intelligence_score', 'eii_score'], 0)),
   );
   const population = getPopulationBurden(drug);
-  const emerging = getEmergingIntelligence(drug);
+  const diseaseForecast = getDiseaseBurdenForecast(drug);
 
   const drivers = [
     {
@@ -252,6 +239,11 @@ function buildWhyItMatters(drug: any) {
       active: population.isHighBurden,
     },
     {
+      label: 'Growing Disease Burden',
+      detail: diseaseForecast.narrative || 'Forward-looking disease burden intelligence indicates rising healthcare relevance.',
+      active: diseaseForecast.isGrowing,
+    },
+    {
       label: 'Strong Evidence Base',
       detail: 'External evidence and validation signals support confident interpretation across workflows.',
       active: evidence >= 60,
@@ -260,11 +252,6 @@ function buildWhyItMatters(drug: any) {
       label: 'Enterprise Relevance',
       detail: 'The medication has value across clinical, claims, AI, graph, and portfolio intelligence workspaces.',
       active: enterprise >= 60,
-    },
-    {
-      label: 'Emerging Strategic Priority',
-      detail: emerging.watchReason || 'Forward-looking intelligence indicates this medication should be monitored for evolving enterprise relevance.',
-      active: emerging.isWatchSignal,
     },
   ];
 
@@ -279,12 +266,7 @@ function buildRecommendedAction(drug: any) {
   const aiStatus = getAiStatus(drug).toLowerCase();
   const claimsStatus = getClaimsStatus(drug).toLowerCase();
   const population = getPopulationBurden(drug);
-  const emerging = getEmergingIntelligence(drug);
   const populationClause = population.isHighBurden ? ' population-health burden review,' : '';
-
-  if (emerging.isEmergingPriority && emerging.executiveAction) {
-    return emerging.executiveAction;
-  }
 
   if (tier.includes('critical') || tier.includes('strategic')) {
     return `${drugName} should be prioritized for executive healthcare intelligence workflows, including enterprise analytics, AI deployment, clinical interpretation,${populationClause} claims operationalization, and portfolio strategy initiatives.`;
@@ -395,18 +377,18 @@ export default function ExecutiveIntelligenceBriefing({ drug }: Props) {
                 valueFrom(drug, ['ehi_v6_percentile', 'ehi_percentile', 'portfolio_percentile'], 0),
               )}
             />
-            {getEmergingIntelligence(drug).isWatchSignal && (
-              <SnapshotCard
-                label="Emerging Signal"
-                primary={getEmergingIntelligence(drug).signal}
-                secondary={getEmergingIntelligence(drug).watchReason || 'Forward-looking executive watch signal'}
-              />
-            )}
             {getPopulationBurden(drug).isHighBurden && (
               <SnapshotCard
                 label="Population Burden"
                 primary={getPopulationBurden(drug).tier}
                 secondary={getPopulationBurden(drug).primaryCondition || getPopulationBurden(drug).benchmark}
+              />
+            )}
+            {getDiseaseBurdenForecast(drug).isGrowing && (
+              <SnapshotCard
+                label="Disease Trend"
+                primary={getDiseaseBurdenForecast(drug).signal}
+                secondary={getDiseaseBurdenForecast(drug).diseaseDomain || 'Forward-looking burden signal'}
               />
             )}
           </div>
