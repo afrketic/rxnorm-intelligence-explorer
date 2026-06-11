@@ -17,24 +17,56 @@ export type ExecutiveFrameworkProfile = {
 };
 
 
-export type PopulationBurdenProfile = {
+export type EmergingSignal = 'Emerging Priority' | 'Watchlist' | 'Rising' | 'Stable' | 'Declining';
+
+export type EmergingMedicationIntelligence = {
   available?: boolean;
-  tier?: string | null;
-  primary_condition?: string | null;
-  disease_domain?: string | null;
-  places_measure?: string | null;
-  places_prevalence?: number | string | null;
-  population_burden_proxy?: number | string | null;
-  prevalence_rank?: number | string | null;
-  burden_rank?: number | string | null;
-  prevalence_benchmark?: string | null;
-  narrative?: string | null;
-  source_year?: string | number | null;
-  source_dataset?: string | null;
+  rxcui?: string;
+  display_name?: string;
+  signal?: EmergingSignal | string | null;
+  emerging_signal?: EmergingSignal | string | null;
+  watch_reason?: string | null;
+  executive_action?: string | null;
+  deployment_priority_tier?: string | null;
+  strategic_opportunity_tier?: string | null;
+  strategic_opportunity_type?: string | null;
+  market_position?: string | null;
+  strategic_opportunity_rank?: number | string | null;
   methodology_version?: string | null;
   raw?: Record<string, any>;
   [key: string]: any;
 };
+
+export type ExecutiveWatchlistItem = {
+  watchlist_rank?: number | string | null;
+  rxcui?: string;
+  display_name?: string;
+  signal?: EmergingSignal | string | null;
+  reason?: string | null;
+  recommended_action?: string | null;
+  methodology_version?: string | null;
+  build_timestamp?: string | null;
+  [key: string]: any;
+};
+
+export type EmergingTherapeuticClass = {
+  portfolio_type?: string | null;
+  portfolio_code?: string | null;
+  portfolio_name?: string | null;
+  emerging_signal?: EmergingSignal | string | null;
+  opportunity_tier?: string | null;
+  portfolio_context?: string | null;
+  recommended_action?: string | null;
+  opportunity_use_case?: string | null;
+  enterprise_opportunity_rank?: number | string | null;
+  executive_opportunity_rank?: number | string | null;
+  medication_count?: number | string | null;
+  enterprise_critical_count?: number | string | null;
+  strategic_priority_count?: number | string | null;
+  methodology_version?: string | null;
+  [key: string]: any;
+};
+
 
 export type DrugCard = {
   rxcui: string;
@@ -55,7 +87,7 @@ export type DrugCard = {
   eii?: ExecutiveFrameworkProfile;
   eis?: ExecutiveFrameworkProfile;
   executive_impact?: Record<string, any>;
-  population_burden?: PopulationBurdenProfile;
+  emerging_intelligence?: EmergingMedicationIntelligence;
   [key: string]: any;
 };
 
@@ -148,7 +180,7 @@ export async function getDrug(rxcui: string) {
       eii: data.eii,
       eis: data.eis,
       executive_impact: data.executive_impact,
-      population_burden: data.population_burden,
+      emerging_intelligence: data.emerging_intelligence,
     },
   };
 }
@@ -545,4 +577,33 @@ export async function getEnterpriseOpportunityPortfolio(
   return requestJson<EnterpriseOpportunityItem>(
     `/enterprise-opportunities/portfolio/${encodeURIComponent(String(portfolioType))}/${encodeURIComponent(String(portfolioCode))}`,
   );
+}
+
+
+export async function getEmergingMedication(rxcui: string): Promise<EmergingMedicationIntelligence> {
+  return requestJson<EmergingMedicationIntelligence>(
+    `/emerging/${encodeURIComponent(String(rxcui))}`,
+  );
+}
+
+export async function getEmergingMedicationTop(
+  limit = 10,
+  signal?: EmergingSignal | string,
+): Promise<EmergingMedicationIntelligence[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (signal) params.set('signal', String(signal));
+  return requestJson<EmergingMedicationIntelligence[]>(`/emerging/top?${params.toString()}`);
+}
+
+export async function getExecutiveWatchlist(limit = 25): Promise<ExecutiveWatchlistItem[]> {
+  return requestJson<ExecutiveWatchlistItem[]>(`/watchlist?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export async function getEmergingTherapeuticClasses(
+  limit = 25,
+  signal?: EmergingSignal | string,
+): Promise<EmergingTherapeuticClass[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (signal) params.set('signal', String(signal));
+  return requestJson<EmergingTherapeuticClass[]>(`/emerging/classes?${params.toString()}`);
 }

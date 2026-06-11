@@ -1556,43 +1556,40 @@ def build_therapeutic_narrative_v2(
 
 
 # -----------------------------------------------------------------------------
-# H3C.1 — CDC Population Burden Intelligence helpers
+# H4A.1 — Emerging Medication Intelligence helpers
 # -----------------------------------------------------------------------------
 
-def build_population_burden_payload(
+def build_emerging_intelligence_payload(
     conn: sqlite3.Connection,
     rxcui: str,
-    medication_intelligence_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Return narrative-first CDC PLACES population burden context.
+    Return forward-looking emerging medication intelligence without introducing
+    a new visible score.
 
-    This intentionally does not return a new visible score. It exposes a tier,
-    prevalence benchmark, and executive narrative for Clinical Intelligence.
+    H4A.1 productizes existing predictive and strategic opportunity tables into
+    executive-facing signals: Emerging Priority, Watchlist, Rising, Stable, and
+    Declining.
     """
-    if not table_exists(conn, "drug_population_burden_mapping_v1"):
-        summary = medication_intelligence_summary or {}
-        primary_condition = (
-            summary.get("primary_disease_focus")
-            or summary.get("primary_disease_mapping")
-            or "Disease focus not yet populated"
-        )
+    methodology_version = "H4A1_EMERGING_MEDICATION_INTELLIGENCE_PRODUCTIZATION_V1"
+
+    if not table_exists(conn, "emerging_medication_intelligence_v1"):
         return {
             "available": False,
-            "tier": "Not Available",
-            "primary_condition": primary_condition,
-            "prevalence_benchmark": "CDC PLACES population burden has not been integrated yet.",
-            "narrative": (
-                "CDC PLACES population burden context has not been generated for this medication yet. "
-                "Run H3C.1 to create drug_population_burden_mapping_v1."
+            "signal": "Stable",
+            "emerging_signal": "Stable",
+            "watch_reason": (
+                "H4A.1 emerging medication intelligence has not been generated yet. "
+                "Run build_h4a1_emerging_medication_intelligence.py to create the emerging intelligence layer."
             ),
-            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
+            "executive_action": "Run H4A.1 to enable forward-looking medication watch signals.",
+            "methodology_version": methodology_version,
         }
 
     row = conn.execute(
         """
         SELECT *
-        FROM drug_population_burden_mapping_v1
+        FROM emerging_medication_intelligence_v1
         WHERE CAST(rxcui AS TEXT) = ?
         LIMIT 1
         """,
@@ -1600,42 +1597,33 @@ def build_population_burden_payload(
     ).fetchone()
 
     if row is None:
-        summary = medication_intelligence_summary or {}
-        primary_condition = (
-            summary.get("primary_disease_focus")
-            or summary.get("primary_disease_mapping")
-            or "Disease focus not yet populated"
-        )
         return {
             "available": False,
-            "tier": "Not Available",
-            "primary_condition": primary_condition,
-            "prevalence_benchmark": "No CDC PLACES population burden mapping found for this medication.",
-            "narrative": (
-                f"No CDC PLACES population burden mapping was found for {primary_condition}. "
-                "The clinical dashboard can still use therapeutic and disease evidence, but population prevalence context is not yet available."
-            ),
-            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
+            "signal": "Stable",
+            "emerging_signal": "Stable",
+            "watch_reason": "No emerging medication signal is currently available for this medication.",
+            "executive_action": "Maintain as stable intelligence context and reassess during the next predictive refresh.",
+            "methodology_version": methodology_version,
         }
 
     item = dict(row)
+    signal = item.get("emerging_signal") or "Stable"
+
     return {
         "available": True,
-        "tier": item.get("population_burden_tier"),
-        "primary_condition": item.get("primary_disease_focus") or item.get("disease_domain"),
-        "disease_domain": item.get("disease_domain"),
-        "places_measure": item.get("cdc_places_measure"),
-        "places_prevalence": item.get("cdc_places_prevalence"),
-        "population_burden_proxy": item.get("cdc_places_population_burden_proxy"),
-        "prevalence_rank": item.get("population_prevalence_rank"),
-        "burden_rank": item.get("population_burden_rank"),
-        "prevalence_benchmark": item.get("population_prevalence_benchmark"),
-        "narrative": item.get("population_burden_narrative"),
-        "source_year": item.get("source_year"),
-        "source_dataset": item.get("source_dataset"),
-        "methodology_version": item.get("methodology_version"),
+        "signal": signal,
+        "emerging_signal": signal,
+        "watch_reason": item.get("watch_reason"),
+        "executive_action": item.get("executive_action"),
+        "deployment_priority_tier": item.get("deployment_priority_tier"),
+        "strategic_opportunity_tier": item.get("strategic_opportunity_tier"),
+        "strategic_opportunity_type": item.get("strategic_opportunity_type"),
+        "market_position": item.get("market_position"),
+        "strategic_opportunity_rank": item.get("strategic_opportunity_rank"),
+        "methodology_version": item.get("methodology_version") or methodology_version,
         "raw": item,
     }
+
 
 
 @app.get("/explorer/drug-detail/{rxcui}", tags=["Intelligence Explorer"])
@@ -1788,10 +1776,9 @@ def explorer_drug_full_detail(
         claims_readiness_layer=claims_readiness_layer,
     )
 
-    population_burden = build_population_burden_payload(
+    emerging_intelligence = build_emerging_intelligence_payload(
         conn=conn,
         rxcui=rxcui,
-        medication_intelligence_summary=medication_intelligence_summary,
     )
 
     def framework_value(record: Dict[str, Any], *keys: str) -> Any:
@@ -1895,7 +1882,7 @@ def explorer_drug_full_detail(
         "graph_intelligence": graph_intelligence,
         "claims_readiness_layer": claims_readiness_layer,
         "executive_intelligence": executive_intelligence,
-        "population_burden": population_burden,
+        "emerging_intelligence": emerging_intelligence,
     }
 
 def get_weighted_medication_similarity_engine(
@@ -3374,92 +3361,7 @@ def align_graph_intelligence_to_primary_pathway(
     return graph_intelligence
 
 
-# 
-
-# -----------------------------------------------------------------------------
-# H3C.1 — CDC Population Burden Intelligence helpers
-# -----------------------------------------------------------------------------
-
-def build_population_burden_payload(
-    conn: sqlite3.Connection,
-    rxcui: str,
-    medication_intelligence_summary: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """
-    Return narrative-first CDC PLACES population burden context.
-
-    This intentionally does not return a new visible score. It exposes a tier,
-    prevalence benchmark, and executive narrative for Clinical Intelligence.
-    """
-    if not table_exists(conn, "drug_population_burden_mapping_v1"):
-        summary = medication_intelligence_summary or {}
-        primary_condition = (
-            summary.get("primary_disease_focus")
-            or summary.get("primary_disease_mapping")
-            or "Disease focus not yet populated"
-        )
-        return {
-            "available": False,
-            "tier": "Not Available",
-            "primary_condition": primary_condition,
-            "prevalence_benchmark": "CDC PLACES population burden has not been integrated yet.",
-            "narrative": (
-                "CDC PLACES population burden context has not been generated for this medication yet. "
-                "Run H3C.1 to create drug_population_burden_mapping_v1."
-            ),
-            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
-        }
-
-    row = conn.execute(
-        """
-        SELECT *
-        FROM drug_population_burden_mapping_v1
-        WHERE CAST(rxcui AS TEXT) = ?
-        LIMIT 1
-        """,
-        (str(rxcui),),
-    ).fetchone()
-
-    if row is None:
-        summary = medication_intelligence_summary or {}
-        primary_condition = (
-            summary.get("primary_disease_focus")
-            or summary.get("primary_disease_mapping")
-            or "Disease focus not yet populated"
-        )
-        return {
-            "available": False,
-            "tier": "Not Available",
-            "primary_condition": primary_condition,
-            "prevalence_benchmark": "No CDC PLACES population burden mapping found for this medication.",
-            "narrative": (
-                f"No CDC PLACES population burden mapping was found for {primary_condition}. "
-                "The clinical dashboard can still use therapeutic and disease evidence, but population prevalence context is not yet available."
-            ),
-            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
-        }
-
-    item = dict(row)
-    return {
-        "available": True,
-        "tier": item.get("population_burden_tier"),
-        "primary_condition": item.get("primary_disease_focus") or item.get("disease_domain"),
-        "disease_domain": item.get("disease_domain"),
-        "places_measure": item.get("cdc_places_measure"),
-        "places_prevalence": item.get("cdc_places_prevalence"),
-        "population_burden_proxy": item.get("cdc_places_population_burden_proxy"),
-        "prevalence_rank": item.get("population_prevalence_rank"),
-        "burden_rank": item.get("population_burden_rank"),
-        "prevalence_benchmark": item.get("population_prevalence_benchmark"),
-        "narrative": item.get("population_burden_narrative"),
-        "source_year": item.get("source_year"),
-        "source_dataset": item.get("source_dataset"),
-        "methodology_version": item.get("methodology_version"),
-        "raw": item,
-    }
-
-
-@app.get("/explorer/drug-detail/{rxcui}", tags=["Intelligence Explorer"])
+# @app.get("/explorer/drug-detail/{rxcui}", tags=["Intelligence Explorer"])
 # def explorer_drug_full_detail(
 #     rxcui: str,
 #     include_raw: bool = Query(default=False, description="Include raw classification/relationship rows for audit/debugging."),
@@ -8194,3 +8096,111 @@ def table_preview(
 @app.get("/tables/{table_name}/count", response_model=TableCountResponse, tags=["Internal"])
 def table_count(table_name: str) -> TableCountResponse:
     return TableCountResponse(table=table_name, row_count=count_table(table_name))
+
+
+# =============================================================================
+# H4A.1 Emerging Medication Intelligence API Routes
+# =============================================================================
+
+@app.get("/emerging/{rxcui}", tags=["Emerging Medication Intelligence"])
+def get_emerging_medication_intelligence(rxcui: str) -> Dict[str, Any]:
+    with get_connection() as conn:
+        return build_emerging_intelligence_payload(conn, rxcui)
+
+
+@app.get("/emerging/top", tags=["Emerging Medication Intelligence"])
+def get_top_emerging_medications(
+    limit: int = Query(default=25, ge=1, le=250),
+    signal: Optional[str] = Query(default=None),
+) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "emerging_medication_intelligence_v1")
+
+        params: List[Any] = []
+        where_clause = ""
+
+        if signal:
+            where_clause = "WHERE emerging_signal = ?"
+            params.append(signal)
+
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM emerging_medication_intelligence_v1
+            {where_clause}
+            ORDER BY
+                CASE emerging_signal
+                    WHEN 'Emerging Priority' THEN 1
+                    WHEN 'Watchlist' THEN 2
+                    WHEN 'Rising' THEN 3
+                    WHEN 'Stable' THEN 4
+                    WHEN 'Declining' THEN 5
+                    ELSE 99
+                END,
+                strategic_opportunity_rank ASC,
+                display_name ASC
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+    return rows_to_dicts(rows)
+
+
+@app.get("/watchlist", tags=["Emerging Medication Intelligence"])
+def get_executive_watchlist(
+    limit: int = Query(default=25, ge=1, le=250),
+) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "executive_watchlist_v1")
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM executive_watchlist_v1
+            ORDER BY watchlist_rank ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    return rows_to_dicts(rows)
+
+
+@app.get("/emerging/classes", tags=["Emerging Medication Intelligence"])
+def get_emerging_therapeutic_classes(
+    limit: int = Query(default=25, ge=1, le=250),
+    signal: Optional[str] = Query(default=None),
+) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        validate_table(conn, "emerging_therapeutic_class_v1")
+
+        params: List[Any] = []
+        where_clause = ""
+
+        if signal:
+            where_clause = "WHERE emerging_signal = ?"
+            params.append(signal)
+
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM emerging_therapeutic_class_v1
+            {where_clause}
+            ORDER BY
+                CASE emerging_signal
+                    WHEN 'Emerging Priority' THEN 1
+                    WHEN 'Watchlist' THEN 2
+                    WHEN 'Rising' THEN 3
+                    WHEN 'Stable' THEN 4
+                    WHEN 'Declining' THEN 5
+                    ELSE 99
+                END,
+                enterprise_opportunity_rank ASC,
+                portfolio_name ASC
+            LIMIT ?
+            """,
+            params + [limit],
+        ).fetchall()
+
+    return rows_to_dicts(rows)
+
