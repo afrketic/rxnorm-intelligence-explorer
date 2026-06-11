@@ -34,6 +34,30 @@ export type DiseaseBurdenForecastProfile = {
   [key: string]: any;
 };
 
+
+export type ExecutiveScenarioProfile = {
+  available?: boolean;
+  scenario_name?: string | null;
+  scenario_type?: string | null;
+  scenario_signal?: string | null;
+  target_domain?: string | null;
+  affected_rxcui?: string | null;
+  affected_medication?: string | null;
+  portfolio_impact?: string | null;
+  disease_impact?: string | null;
+  medication_impact?: string | null;
+  executive_recommendation?: string | null;
+  scenario_version?: string | null;
+  raw?: Record<string, any>;
+  [key: string]: any;
+};
+
+export type ExecutiveScenarioItem = ExecutiveScenarioProfile & {
+  scenario_priority_rank?: number | string | null;
+  source_tables?: string | null;
+  build_timestamp?: string | null;
+};
+
 export type DrugCard = {
   rxcui: string;
   drug_name?: string;
@@ -555,4 +579,22 @@ export async function getEnterpriseOpportunityPortfolio(
   return requestJson<EnterpriseOpportunityItem>(
     `/enterprise-opportunities/portfolio/${encodeURIComponent(String(portfolioType))}/${encodeURIComponent(String(portfolioCode))}`,
   );
+}
+
+
+export async function getExecutiveScenarios(
+  limit = 25,
+  scenarioType?: string,
+): Promise<ExecutiveScenarioItem[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (scenarioType) params.set('scenario_type', scenarioType);
+  return requestJson<ExecutiveScenarioItem[]>(`/executive-scenarios?${params.toString()}`);
+}
+
+export async function getExecutiveScenarioSummary(): Promise<Array<Record<string, any>>> {
+  return requestJson<Array<Record<string, any>>>('/executive-scenarios/summary');
+}
+
+export async function getExecutiveScenarioRecommendations(limit = 25): Promise<Array<Record<string, any>>> {
+  return requestJson<Array<Record<string, any>>>(`/executive-scenarios/recommendations?limit=${encodeURIComponent(String(limit))}`);
 }

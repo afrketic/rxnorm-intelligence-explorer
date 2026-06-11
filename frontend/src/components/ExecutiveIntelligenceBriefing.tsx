@@ -19,7 +19,8 @@ function valueFrom(source: any, keys: string[], fallback: any = null) {
       source?.medication_intelligence_summary?.[key] ??
       source?.claims_readiness_layer?.[key] ??
       source?.graph_metrics?.[key] ??
-      source?.portfolio_benchmark?.[key];
+      source?.portfolio_benchmark?.[key] ??
+      source?.executive_scenario?.[key];
 
     if (value !== null && value !== undefined && value !== '') return value;
   }
@@ -164,6 +165,20 @@ function getDiseaseBurdenForecast(drug: any) {
   };
 }
 
+
+function getExecutiveScenario(drug: any) {
+  const scenario = drug?.executive_scenario || drug?.drug?.executive_scenario || {};
+  return {
+    available: Boolean(scenario?.available),
+    scenarioName: String(scenario?.scenario_name || 'Scenario intelligence pending'),
+    scenarioType: String(scenario?.scenario_type || 'Executive scenario'),
+    portfolioImpact: String(scenario?.portfolio_impact || '').trim(),
+    diseaseImpact: String(scenario?.disease_impact || '').trim(),
+    medicationImpact: String(scenario?.medication_impact || '').trim(),
+    executiveRecommendation: String(scenario?.executive_recommendation || '').trim(),
+  };
+}
+
 function buildExecutiveSummary(drug: any) {
   const drugName = getDrugName(drug);
   const tier = getTier(drug);
@@ -242,6 +257,11 @@ function buildWhyItMatters(drug: any) {
       label: 'Growing Disease Burden',
       detail: diseaseForecast.narrative || 'Forward-looking disease burden intelligence indicates rising healthcare relevance.',
       active: diseaseForecast.isGrowing,
+    },
+    {
+      label: 'Executive Scenario Insight',
+      detail: getExecutiveScenario(drug).portfolioImpact || 'Scenario intelligence connects disease, portfolio, medication, and executive action impacts.',
+      active: getExecutiveScenario(drug).available,
     },
     {
       label: 'Strong Evidence Base',
@@ -405,6 +425,35 @@ export default function ExecutiveIntelligenceBriefing({ drug }: Props) {
           ))}
         </div>
       </section>
+
+
+      {getExecutiveScenario(drug).available && (
+        <section className="rounded-3xl border border-amber-300/25 bg-amber-400/10 p-5 text-white">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-200">
+                Executive Scenario Insight
+              </p>
+              <h3 className="mt-2 text-xl font-black text-white">
+                {getExecutiveScenario(drug).scenarioName}
+              </h3>
+            </div>
+            <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-100">
+              {getExecutiveScenario(drug).scenarioType}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <DriverCard label="Portfolio Impact" detail={getExecutiveScenario(drug).portfolioImpact || 'Portfolio impact pending.'} />
+            <DriverCard label="Disease Impact" detail={getExecutiveScenario(drug).diseaseImpact || 'Disease impact pending.'} />
+            <DriverCard label="Medication Impact" detail={getExecutiveScenario(drug).medicationImpact || 'Medication impact pending.'} />
+          </div>
+          {getExecutiveScenario(drug).executiveRecommendation && (
+            <p className="mt-4 text-sm font-semibold leading-6 text-amber-50">
+              {getExecutiveScenario(drug).executiveRecommendation}
+            </p>
+          )}
+        </section>
+      )}
 
       <section className="rounded-3xl border border-cyan-400/20 bg-cyan-400/10 p-5 text-white">
         <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-200">

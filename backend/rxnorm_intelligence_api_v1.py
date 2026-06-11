@@ -1556,8 +1556,70 @@ def build_therapeutic_narrative_v2(
 
 
 # -----------------------------------------------------------------------------
-# H4B.3 — Disease Burden Forecasting helpers
+# H3C.1 / H4B.3 / H4B.4 — Forward-looking intelligence helpers
 # -----------------------------------------------------------------------------
+
+def normalize_scenario_text(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def build_population_burden_payload(
+    conn: sqlite3.Connection,
+    rxcui: str,
+    medication_intelligence_summary: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Return H3C.1 population burden context without creating another score."""
+    summary = medication_intelligence_summary or {}
+
+    if not table_exists(conn, "drug_population_burden_mapping_v1"):
+        return {
+            "available": False,
+            "tier": "Not Available",
+            "primary_condition": summary.get("primary_disease_focus") or "Disease focus not yet populated",
+            "narrative": (
+                "Population burden intelligence has not been generated yet. "
+                "Run H3C.1 to create drug_population_burden_mapping_v1."
+            ),
+            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
+        }
+
+    row = conn.execute(
+        """
+        SELECT *
+        FROM drug_population_burden_mapping_v1
+        WHERE CAST(rxcui AS TEXT) = ?
+        LIMIT 1
+        """,
+        (str(rxcui),),
+    ).fetchone()
+
+    if row is None:
+        return {
+            "available": False,
+            "tier": "Not Available",
+            "primary_condition": summary.get("primary_disease_focus") or "Disease focus not yet populated",
+            "narrative": "Population burden mapping is not yet available for this medication.",
+            "methodology_version": "H3C1_CDC_PLACES_POPULATION_BURDEN_INTELLIGENCE_V1",
+        }
+
+    item = dict(row)
+    return {
+        "available": True,
+        "tier": item.get("population_burden_tier"),
+        "primary_condition": item.get("primary_disease_focus"),
+        "disease_domain": item.get("primary_disease_focus"),
+        "places_prevalence": item.get("cdc_places_prevalence"),
+        "population_burden_proxy": item.get("cdc_places_population_burden_proxy"),
+        "prevalence_rank": item.get("population_prevalence_rank"),
+        "burden_rank": item.get("population_burden_rank"),
+        "prevalence_benchmark": item.get("population_prevalence_benchmark"),
+        "narrative": item.get("population_burden_narrative"),
+        "source_year": item.get("source_year"),
+        "source_dataset": item.get("source_dataset"),
+        "methodology_version": item.get("methodology_version"),
+        "raw": item,
+    }
+
 
 def build_disease_burden_forecast_payload(
     conn: sqlite3.Connection,
@@ -1565,10 +1627,8 @@ def build_disease_burden_forecast_payload(
     population_burden: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Return narrative-first disease burden forecasting context.
-
-    H4B.3 intentionally exposes trend signals rather than a new forecast score.
-    Signals: Accelerating, Growing, Stable, Declining.
+    H4B.3 — Return narrative-first disease burden forecasting context.
+    No forecast score is created or exposed.
     """
     summary = medication_intelligence_summary or {}
     population = population_burden or {}
@@ -1650,6 +1710,104 @@ def build_disease_burden_forecast_payload(
         "forecast_version": item.get("forecast_version"),
         "source_year": item.get("source_year"),
         "source_dataset": item.get("source_dataset"),
+        "raw": item,
+    }
+
+
+def build_executive_scenario_payload(
+    conn: sqlite3.Connection,
+    rxcui: str,
+    disease_burden_forecast: Optional[Dict[str, Any]] = None,
+    medication_intelligence_summary: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    H4B.4 — Return scenario intelligence for a selected medication.
+    No scenario score is created or exposed.
+    """
+    forecast = disease_burden_forecast or {}
+    summary = medication_intelligence_summary or {}
+
+    if not table_exists(conn, "executive_scenario_engine_v1"):
+        return {
+            "available": False,
+            "scenario_name": "Scenario intelligence not yet generated",
+            "scenario_type": "Not Available",
+            "portfolio_impact": "Run H4B.4 to create executive_scenario_engine_v1.",
+            "disease_impact": "Scenario impact is not yet available.",
+            "medication_impact": "Medication-level scenario impact is not yet available.",
+            "executive_recommendation": "Generate the H4B.4 scenario engine before using scenario planning outputs.",
+            "scenario_version": "H4B4_EXECUTIVE_SCENARIO_INTELLIGENCE_V1",
+        }
+
+    row = conn.execute(
+        """
+        SELECT *
+        FROM executive_scenario_engine_v1
+        WHERE CAST(affected_rxcui AS TEXT) = ?
+        ORDER BY
+            CASE scenario_type
+                WHEN 'Population Burden Change' THEN 1
+                WHEN 'FDA Safety Signal' THEN 2
+                WHEN 'Therapeutic Breakthrough' THEN 3
+                ELSE 9
+            END,
+            scenario_priority_rank ASC
+        LIMIT 1
+        """,
+        (str(rxcui),),
+    ).fetchone()
+
+    if row is None:
+        disease_domain = forecast.get("disease_domain") or summary.get("primary_disease_focus")
+        if disease_domain:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM executive_scenario_engine_v1
+                WHERE LOWER(CAST(target_domain AS TEXT)) = LOWER(?)
+                   OR LOWER(CAST(? AS TEXT)) LIKE '%' || LOWER(CAST(target_domain AS TEXT)) || '%'
+                ORDER BY scenario_priority_rank ASC
+                LIMIT 1
+                """,
+                (str(disease_domain), str(disease_domain)),
+            ).fetchone()
+
+    if row is None:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM executive_scenario_engine_v1
+            ORDER BY scenario_priority_rank ASC
+            LIMIT 1
+            """
+        ).fetchone()
+
+    if row is None:
+        return {
+            "available": False,
+            "scenario_name": "Scenario intelligence unavailable",
+            "scenario_type": "Not Available",
+            "portfolio_impact": "No scenario records are available.",
+            "disease_impact": "No disease scenario records are available.",
+            "medication_impact": "No medication scenario records are available.",
+            "executive_recommendation": "Rebuild H4B.4 scenario intelligence.",
+            "scenario_version": "H4B4_EXECUTIVE_SCENARIO_INTELLIGENCE_V1",
+        }
+
+    item = dict(row)
+    return {
+        "available": True,
+        "scenario_name": item.get("scenario_name"),
+        "scenario_type": item.get("scenario_type"),
+        "scenario_signal": item.get("scenario_signal"),
+        "target_domain": item.get("target_domain"),
+        "affected_rxcui": item.get("affected_rxcui"),
+        "affected_medication": item.get("affected_medication"),
+        "portfolio_impact": item.get("portfolio_impact"),
+        "disease_impact": item.get("disease_impact"),
+        "medication_impact": item.get("medication_impact"),
+        "executive_recommendation": item.get("executive_recommendation"),
+        "scenario_version": item.get("scenario_version"),
         "raw": item,
     }
 
@@ -1803,8 +1961,22 @@ def explorer_drug_full_detail(
         claims_readiness_layer=claims_readiness_layer,
     )
 
+    population_burden = build_population_burden_payload(
+        conn=conn,
+        rxcui=rxcui,
+        medication_intelligence_summary=medication_intelligence_summary,
+    )
+
     disease_burden_forecast = build_disease_burden_forecast_payload(
         conn=conn,
+        medication_intelligence_summary=medication_intelligence_summary,
+        population_burden=population_burden,
+    )
+
+    executive_scenario = build_executive_scenario_payload(
+        conn=conn,
+        rxcui=rxcui,
+        disease_burden_forecast=disease_burden_forecast,
         medication_intelligence_summary=medication_intelligence_summary,
     )
 
@@ -1909,7 +2081,9 @@ def explorer_drug_full_detail(
         "graph_intelligence": graph_intelligence,
         "claims_readiness_layer": claims_readiness_layer,
         "executive_intelligence": executive_intelligence,
+        "population_burden": population_burden,
         "disease_burden_forecast": disease_burden_forecast,
+        "executive_scenario": executive_scenario,
     }
 
 def get_weighted_medication_similarity_engine(
@@ -5954,38 +6128,28 @@ def get_production_platform_readiness_summary():
 
 
 # =============================================================================
-# H4B.3 — Disease Burden Forecasting API Routes
+# H4B.4 — Executive Scenario Intelligence API Routes
 # =============================================================================
 
-@app.get("/disease-burden/forecasting", tags=["Disease Burden Forecasting"])
-def get_disease_burden_forecasting(
+@app.get("/executive-scenarios", tags=["Executive Scenario Intelligence"])
+def get_executive_scenarios(
     limit: int = Query(default=25, ge=1, le=250),
-    signal: Optional[str] = Query(default=None, description="Accelerating, Growing, Stable, or Declining"),
+    scenario_type: Optional[str] = Query(default=None),
 ):
     with get_connection() as conn:
-        validate_table(conn, "disease_burden_forecasting_v1")
+        validate_table(conn, "executive_scenario_engine_v1")
         params: List[Any] = []
         where_clause = ""
-        if signal:
-            where_clause = "WHERE burden_trend_signal = ?"
-            params.append(signal)
+        if scenario_type:
+            where_clause = "WHERE scenario_type = ?"
+            params.append(scenario_type)
 
         rows = conn.execute(
             f"""
             SELECT *
-            FROM disease_burden_forecasting_v1
+            FROM executive_scenario_engine_v1
             {where_clause}
-            ORDER BY
-                CASE burden_trend_signal
-                    WHEN 'Accelerating' THEN 1
-                    WHEN 'Growing' THEN 2
-                    WHEN 'Stable' THEN 3
-                    WHEN 'Declining' THEN 4
-                    ELSE 9
-                END,
-                population_burden_rank DESC,
-                population_prevalence_rank DESC,
-                mapped_medication_count DESC
+            ORDER BY scenario_priority_rank ASC
             LIMIT ?
             """,
             params + [limit],
@@ -5994,28 +6158,36 @@ def get_disease_burden_forecasting(
     return rows_to_dicts(rows)
 
 
-@app.get("/disease-burden/forecasting/summary", tags=["Disease Burden Forecasting"])
-def get_disease_burden_forecasting_summary():
+@app.get("/executive-scenarios/summary", tags=["Executive Scenario Intelligence"])
+def get_executive_scenario_summary():
     with get_connection() as conn:
-        validate_table(conn, "disease_burden_forecasting_v1")
+        validate_table(conn, "scenario_impact_summary_v1")
         rows = conn.execute(
             """
-            SELECT burden_trend_signal, COUNT(*) AS disease_area_count
-            FROM disease_burden_forecasting_v1
-            GROUP BY burden_trend_signal
-            ORDER BY
-                CASE burden_trend_signal
-                    WHEN 'Accelerating' THEN 1
-                    WHEN 'Growing' THEN 2
-                    WHEN 'Stable' THEN 3
-                    WHEN 'Declining' THEN 4
-                    ELSE 9
-                END
+            SELECT *
+            FROM scenario_impact_summary_v1
+            ORDER BY scenario_type ASC, scenario_count DESC
             """
         ).fetchall()
-
     return rows_to_dicts(rows)
 
+
+@app.get("/executive-scenarios/recommendations", tags=["Executive Scenario Intelligence"])
+def get_executive_scenario_recommendations(
+    limit: int = Query(default=25, ge=1, le=250),
+):
+    with get_connection() as conn:
+        validate_table(conn, "scenario_recommendation_v1")
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM scenario_recommendation_v1
+            ORDER BY recommendation_rank ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return rows_to_dicts(rows)
 
 # =============================================================================
 # Frontend compatibility aliases

@@ -4,8 +4,10 @@ import {
   getPortfolioTopOpportunities,
   getTherapeuticPortfolios,
   getDiseaseBurdenForecasting,
+  getExecutiveScenarios,
   PortfolioIntelligenceItem,
   DiseaseBurdenForecastProfile,
+  ExecutiveScenarioItem,
 } from '../lib/api';
 
 function formatNumber(value: unknown, fallback = 0) {
@@ -95,6 +97,25 @@ function DiseaseForecastRow({ item }: { item: DiseaseBurdenForecastProfile }) {
   );
 }
 
+
+function ScenarioImpactRow({ item }: { item: ExecutiveScenarioItem }) {
+  return (
+    <div className="rounded-2xl border border-amber-300/15 bg-amber-400/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-300">{item.scenario_type || 'Scenario'}</p>
+          <p className="mt-2 text-sm font-black leading-5 text-white">{item.scenario_name || 'Executive scenario'}</p>
+        </div>
+        <span className="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-xs font-black text-amber-100">
+          {item.scenario_signal || 'Impact'}
+        </span>
+      </div>
+      <p className="mt-3 text-xs font-semibold leading-5 text-slate-300">{item.portfolio_impact || 'Portfolio impact pending.'}</p>
+      <p className="mt-2 text-xs font-semibold leading-5 text-amber-50">{item.executive_recommendation || 'Recommendation pending.'}</p>
+    </div>
+  );
+}
+
 function HeroMetric({ label, value, helper }: { label: string; value: string; helper: string }) {
   return (
     <div className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 p-4">
@@ -109,6 +130,7 @@ export default function PortfolioIntelligenceCard() {
   const [therapeutic, setTherapeutic] = useState<PortfolioIntelligenceItem[]>([]);
   const [opportunities, setOpportunities] = useState<PortfolioIntelligenceItem[]>([]);
   const [glp1, setGlp1] = useState<PortfolioIntelligenceItem | null>(null);
+  const [scenarios, setScenarios] = useState<ExecutiveScenarioItem[]>([]);
   const [diseaseForecasts, setDiseaseForecasts] = useState<DiseaseBurdenForecastProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,12 +148,14 @@ export default function PortfolioIntelligenceCard() {
           getPortfolioTopOpportunities(25),
           getPortfolioOpportunity('ATC4', 'A10BJ').catch(() => null),
           getDiseaseBurdenForecasting(10).catch(() => []),
+          getExecutiveScenarios(6).catch(() => []),
         ]);
 
         if (!active) return;
         setTherapeutic(therapeuticRows);
         setOpportunities(opportunityRows);
         setGlp1(glp1Row);
+        setScenarios(scenarios || []);
         setDiseaseForecasts(diseaseForecastRows);
       } catch (err) {
         if (!active) return;
@@ -262,6 +286,31 @@ export default function PortfolioIntelligenceCard() {
                 key={`disease-forecast-${item.disease_domain || item.canonical_disease_name}`}
                 item={item}
               />
+            ))}
+          </div>
+        </div>
+
+
+        <div className="mt-5 rounded-3xl border border-amber-300/20 bg-amber-500/10 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
+                Scenario Impact Analysis
+              </p>
+              <h3 className="mt-2 text-xl font-black text-white">
+                What happens if healthcare conditions change?
+              </h3>
+              <p className="mt-2 max-w-5xl text-sm font-semibold leading-6 text-slate-300">
+                H4B.4 translates disease burden shifts, FDA safety events, and therapeutic breakthroughs into executive planning artifacts: portfolio impact, disease impact, medication impact, and recommended action.
+              </p>
+            </div>
+            <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-amber-100">
+              No Scenario Score
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            {scenarios.slice(0, 3).map((item, index) => (
+              <ScenarioImpactRow key={`${item.scenario_name}-${item.affected_rxcui || item.target_domain || index}`} item={item} />
             ))}
           </div>
         </div>
